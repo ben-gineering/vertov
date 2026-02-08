@@ -4,7 +4,8 @@ import os
 package_name = 'vertov_video'
 
 setup(
-    name=package_name,
+    # setuptools distribution name; keep ROS package name as vertov_video
+    name='video_video',
     version='0.1.0',
     packages=[package_name],
     data_files=[
@@ -24,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'video_agent = vertov_video.video_agent:main',
+            'video_agent_node = vertov_video.video_agent:main',
         ],
     },
 )

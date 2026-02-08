@@ -25,25 +25,32 @@ class VideoAgent(Node):
         self.is_recording = False
 
         callback_group = ReentrantCallbackGroup()
-        self.service = self.create_service(
+        self.start_service = self.create_service(
             Trigger,
             'start_recording',
             self.start_recording_callback,
             callback_group=callback_group
         )
 
+        self.stop_service = self.create_service(
+            Trigger,
+            'stop_recording',
+            self.stop_recording_callback,
+            callback_group=callback_group
+        )
+
         self.get_logger().info(f'VideoAgent ready (camera_id: {self.camera_id})')
-        self.get_logger().info(f'Service available at: /start_recording')
+        self.get_logger().info('Services available at: /start_recording, /stop_recording')
 
     def create_pipeline(self, output_path):
         """Create GStreamer recording pipeline."""
         pipeline_str = (
-            f"libcamerasrc ! "
-            f"video/x-raw, width=1920, height=1080, framerate=30/1 ! "
-            f"v4l2h264enc extra-controls='encode,h264_level=4' ! "
-            f"h264parse ! "
-            f"mp4mux ! "
-            f"filesink location={output_path}"
+            "libcamerasrc ! "
+            "video/x-raw,format=RGB,width=640,height=480,framerate=30/1 ! "
+            "videoconvert ! "
+            "x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 ! "
+            "h264parse ! "
+            f"mp4mux ! filesink location={output_path}"
         )
         self.get_logger().info(f'Pipeline: {pipeline_str}')
         return Gst.parse_launch(pipeline_str)
@@ -91,6 +98,29 @@ class VideoAgent(Node):
             response.success = False
             response.message = str(e)
             self.get_logger().error(f'Failed to start recording: {e}')
+
+        return response
+
+    def stop_recording_callback(self, request, response):
+        """Handle StopRecording service calls by sending EOS to the pipeline."""
+        self.get_logger().info('Received stop recording request')
+
+        if not self.is_recording or self.pipeline is None:
+            response.success = False
+            response.message = 'No active recording'
+            return response
+
+        try:
+            self.get_logger().info('Sending EOS event to pipeline')
+            # This will cause the monitor thread to observe EOS, log
+            # completion, and tear down the pipeline cleanly.
+            self.pipeline.send_event(Gst.Event.new_eos())
+            response.success = True
+            response.message = 'Stopping recording'
+        except Exception as e:
+            self.get_logger().error(f'Failed to stop recording: {e}')
+            response.success = False
+            response.message = str(e)
 
         return response
 

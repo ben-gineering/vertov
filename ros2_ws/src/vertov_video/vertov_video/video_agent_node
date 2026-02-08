@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+import sys
+
+from vertov_video.video_agent import main
+
+
+if __name__ == "__main__":
+    sys.exit(main())
