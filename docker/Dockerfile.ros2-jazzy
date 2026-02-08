@@ -5,25 +5,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     ros-dev-tools \
+    ros-$ROS_DISTRO-rmw-cyclonedds-cpp \
     vim \
     less \
     bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
-ARG USER_ID=1000
-ARG USER_GID=1000
-ARG USERNAME=vertov
-
-RUN groupadd --gid $USER_GID $USERNAME && \
-    useradd --uid $USER_ID --gid $USER_GID -m $USERNAME
-
-RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
-USER $USERNAME
-
 WORKDIR /workspace/vertov
 
-COPY --chown=$USER_ID:$USER_GID entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV ROS_DOMAIN_ID=0

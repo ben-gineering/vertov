@@ -1,19 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<CycloneDDS xmlns="https://www.ecinternational.com/schema/cyclonedds/cyclonedds.xsd">
-    <Domain id="any">
-        <Discovery>
-            <ParticipantIndex>auto</ParticipantIndex>
-            <AddressDiscovery>
-                <Peers>
-                    <Peer address="multicast"/>
-                </Peers>
-                <NetworkInterface address="default"/>
-            </AddressDiscovery>
-        </Discovery>
-        <Internal>
-            <Watermarks>
-                <Whc>true</Whc>
-            </Watermarks>
-        </Internal>
-    </Domain>
+<CycloneDDS xmlns="https://cdds.io/config">
+  <Domain id="any">
+    <!-- Minimal config: use CycloneDDS defaults for discovery and networking -->
+  </Domain>
 </CycloneDDS>
