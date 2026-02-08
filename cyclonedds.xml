@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CycloneDDS>
+  <Domain>
+    <General>
+      <AllowMulticast>true</AllowMulticast>
+      <MaxMessageSize>65500B</MaxMessageSize>
+    </General>
+    <Discovery>
+      <ParticipantIndex>auto</ParticipantIndex>
+      <MaxAutoParticipantIndex>100</MaxAutoParticipantIndex>
+      <DiscoveryServers>
+        <!-- Allow discovery from any IP in the 10.0.0.0/8 subnet -->
+      </DiscoveryServers>
+    </Discovery>
+  </Domain>
+</CycloneDDS>
