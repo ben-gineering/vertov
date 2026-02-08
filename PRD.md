@@ -222,9 +222,9 @@ System states: IDLE → ARMING → RECORDING → STOPPING → SYNCING → IDLE
 
 | Component | Version/Type | Notes |
 |-----------|--------------|-------|
-| **OS** | Ubuntu 22.04 (Pi4/x86) | Or Raspberry Pi OS Lite + Docker for Pi agents |
-| **ROS2 Distro** | Iron Irwini | Non-LTS acceptable; upgrade path to J-turtle defined |
-| **DDS** | CycloneDDS (default) | Configure for WiFi resilience (fragmentation, UDP buffer size) |
+| **OS** | Ubuntu 22.04 (Pi4/5 agents); Linux host (e.g. Arch) + Ubuntu 24.04-based Docker image for control node | ROS2 runs natively on agents and in containers on x86 where needed |
+| **ROS2 Distro** | Jazzy Jalisco | Current target; future upgrades TBD |
+| **DDS** | CycloneDDS (`rmw_cyclonedds_cpp`) | Minimal config for now; production config for WiFi/dual-network resilience TBD |
 | **GStreamer** | 1.22+ | Python GI bindings for agent nodes |
 | **Camera APIs** | libcamera (CSI), V4L2 (USB) | Hardware encoding mandatory |
 | **Web Backend** | FastAPI (Python) or Node.js | Bridges HTTP/WebSocket to ROS2 |
@@ -349,8 +349,9 @@ string robot_status
 ---
 
 **Next Steps:**
+0. MVP: Remote-triggered video-only recording from control node to a single Pi 5 agent (no robotics, no audio, no multi-node sync yet)
 1. Resolve TBD-01 (Robot hardware selection)
-2. Define ROS2 package structure (`studio_bringup`, `studio_video`, `studio_robot`)
+2. Define ROS2 package structure (`vertov_bringup`, `vertov_video`, `vertov_robot`)
 3. Prototype single-node recording (GStreamer + ROS2 service)
 
 **Approval Required From:** [Product Owner/Technical Lead]
