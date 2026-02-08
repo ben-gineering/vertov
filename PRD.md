@@ -1,14 +1,14 @@
-**Product Requirements Document: Studio Robotics Recording System (STURRS)**
+**Product Requirements Document: Studio Robotics Recording System (vertov)**
 
 **Version:** 0.1  
-**Date:** 2024-01-15  
+**Date:** 2026-02-08
 **Status:** Draft for Review  
 
 ---
 
 ## 1. Executive Summary
 
-STURRS is a distributed camera and robotics control system for artistic video production. It enables a single operator to coordinate camera movements across multiple Linux-based recording nodes (ARM/x86 mixed) using ROS2 as the primary orchestration layer, with local storage and post-hoc file aggregation.
+vertov is a distributed camera and robotics control system for artistic video production. It enables a single operator to coordinate camera movements across multiple Linux-based recording nodes (ARM/x86 mixed) using ROS2 as the primary orchestration layer, with local storage and post-hoc file aggregation.
 
 **Key Principle:** ROS2 acts as the State Machine Master. The Web Interface controls ROS2; ROS2 controls both robot motion and video recording. There is no separate meta-orchestrator.
 
