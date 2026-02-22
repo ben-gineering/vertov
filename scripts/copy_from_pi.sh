@@ -12,7 +12,7 @@ PI_USER="pi"
 PI_SOURCE_DIR="/home/pi/Videos"
 
 # Destination directory on the local desktop machine
-LOCAL_DEST_DIR="tmp/pi-videos"
+LOCAL_DEST_DIR="/tmp/pi-videos"
 
 mkdir -p "$LOCAL_DEST_DIR"
 
