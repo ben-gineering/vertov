@@ -133,6 +133,13 @@ vertov is a distributed camera and robotics control system for artistic video pr
 - Sample rate: 48kHz/24-bit (Blender VSE compatible)
 - Audio transient sync mark recorded at take start (see FR-SYNC-01)
 
+**FR-VIDEO-05:** Rolling Buffer Recording (Retrospective Takes)
+- Each video agent optionally supports a continuous "rolling" recording mode in addition to the explicit take-based mode.
+- In rolling mode, the agent maintains a circular buffer of the last *N* minutes of encoded video (and optionally audio) on local storage; *N* is configurable per node.
+- When the operator triggers "Save recent clip" (via Web UI or physical control), the system creates a new take that covers the last `duration_sec` seconds ending at a common `trigger_time`.
+- The orchestrator calls a per-agent service (see `SaveRecentClip` in §7.1) with `take_id`, `duration_sec`, and `trigger_time`; each agent persists the relevant portion of its rolling buffer as one or more MP4/WAV files and returns the filenames.
+- Rolling-buffer takes use the same metadata model as normal takes (sidecar JSON keyed by `take_id`) but are defined retrospectively rather than by a planned start/stop.
+
 ### 4.2 Robotics Control (FR-ROBOT)
 
 **FR-ROBOT-01:** Independent Robot Coordination
@@ -301,6 +308,19 @@ builtin_interfaces/Time start_time  # Future timestamp for sync
 # Response
 bool success
 string filename
+string error
+```
+
+**Service:** `SaveRecentClip` (per camera agent)
+```
+# Request
+string take_id
+uint32 duration_sec
+builtin_interfaces/Time trigger_time  # When the operator pressed "save recent clip"
+---
+# Response
+bool success
+string[] filenames  # One or more files created on this agent
 string error
 ```
 
