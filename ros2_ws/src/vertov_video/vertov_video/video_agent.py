@@ -46,7 +46,7 @@ class VideoAgent(Node):
         """Create GStreamer recording pipeline."""
         pipeline_str = (
             "libcamerasrc ! "
-            "video/x-raw,format=RGB,width=640,height=480,framerate=30/1 ! "
+            "video/x-raw,format=RGB,width=1920,height=1080,framerate=30/1 ! "
             "videoconvert ! "
             "x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 ! "
             "h264parse ! "
