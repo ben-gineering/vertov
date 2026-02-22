@@ -255,6 +255,16 @@ System states: IDLE → ARMING → RECORDING → STOPPING → SYNCING → IDLE
 - **Sync Plane:** WiFi 5GHz (802.11ac) or Gigabit Ethernet
 - **Time Sync:** PTP Grandmaster (Control Node) or GPS-disciplined oscillator for outdoor
 
+### 6.4 Current Test Rigs
+
+The following setups are currently available and used for early MVP testing. They are a subset of the target hardware described above and may evolve over time.
+
+- **Video Agent Rig A:** Raspberry Pi 5 + Raspberry Pi High Quality Camera, USB SSD for local recording
+- **Control/Test Rig B:** x86 machine (Arch Linux) with USB webcam
+- **Mobile Base:** TurtleBot 3 (no camera mounted yet)
+- **Robot Arm:** PhantomX Reactor (no camera mounted yet)
+- **Operator Interface:** Android tablet/phone used as primary web interface client
+
 ---
 
 ## 7. Interfaces & APIs
