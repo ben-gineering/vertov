@@ -210,13 +210,30 @@ following behavior has been observed:
 This suggests an EOS/teardown issue specific to `libcamerasrc` at 1080p on this
 platform, rather than a general problem with `x264enc` or `mp4mux`.
 
+During further testing with the same 1080p `libcamerasrc` pipeline but
+`matroskamux` instead of `mp4mux`, the following additional behavior was
+observed:
+
+- Both the standalone `gst-launch-1.0` pipeline and the `vertov_video`
+  ROS node successfully configure the IMX477 at 1920x1080 and transition to
+  the PLAYING state.
+- The resulting `.mkv` files are structurally valid and seekable (both
+  `ffprobe` and `gst-discoverer-1.0` report a Matroska container with a
+  1920x1080@30fps H.264 stream), avoiding the "moov atom not found" failure
+  seen with MP4.
+- However, even when the pipeline is left running for tens of seconds, the
+  recorded MKV clips only contain roughly 0.5 seconds of video. No EOS or
+  ERROR messages are reported on the GStreamer bus; the pipeline remains in
+  PLAYING, but frame production appears to stall shortly after startup.
+
 Workarounds and current recommendation:
 
 - Use a lower resolution pipeline (e.g. 640x480) that is known to shut down
   cleanly and produce valid MP4 files.
 - Prefer using `matroskamux` instead of `mp4mux` to record `.mkv` files on the
-  Pi, which has proven more robust to imperfect EOS handling at 1080p. The
-  `vertov_video` ROS node records 1080p H.264 into MKV by default.
+  Pi. This avoids the MP4 `moov` atom failures at 1080p and produces valid,
+  seekable containers, but note that with the current stack the effective clip
+  length is still limited to ~0.5s at 1080p.
 - If you require MP4 for downstream tools, convert off-device (for example on
   the Arch Linux control node) using a stream copy remux:
 
@@ -224,5 +241,7 @@ Workarounds and current recommendation:
   ffmpeg -i input.mkv -c copy output.mp4
   ```
 
-The 1080p + `libcamerasrc` + MP4 behavior should be revisited after future
-libcamera/GStreamer updates.
+The 1080p + `libcamerasrc` behavior (both with `mp4mux` and `matroskamux`)
+should be revisited after future libcamera/GStreamer updates, or replaced by a
+different pipeline design (e.g. alternate caps, encoder, or container) once a
+stable 1080p configuration is identified.

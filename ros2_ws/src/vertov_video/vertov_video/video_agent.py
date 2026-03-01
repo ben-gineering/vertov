@@ -72,21 +72,40 @@ class VideoAgent(Node):
         try:
             self.pipeline = self.create_pipeline(output_path)
             bus = self.pipeline.get_bus()
-            self.pipeline.set_state(Gst.State.PLAYING)
+            self.get_logger().info('Setting pipeline to PLAYING state')
+            ret = self.pipeline.set_state(Gst.State.PLAYING)
+            self.get_logger().info(f'Pipeline state change result: {ret}')
 
             def monitor_bus():
-                msg = bus.timed_pop_filtered(
-                    Gst.CLOCK_TIME_NONE,
-                    Gst.MessageType.ERROR | Gst.MessageType.EOS
-                )
-                if msg:
+                self.get_logger().info('Bus monitor thread started')
+                while True:
+                    msg = bus.timed_pop_filtered(
+                        Gst.CLOCK_TIME_NONE,
+                        Gst.MessageType.ERROR | Gst.MessageType.EOS | Gst.MessageType.STATE_CHANGED
+                    )
+                    if not msg:
+                        continue
+
+                    if msg.type == Gst.MessageType.STATE_CHANGED:
+                        if msg.src == self.pipeline:
+                            old_state, new_state, pending = msg.parse_state_changed()
+                            self.get_logger().info(
+                                f'Pipeline state changed: {old_state.value_nick} -> {new_state.value_nick} (pending={pending.value_nick})'
+                            )
+                        continue
+
                     if msg.type == Gst.MessageType.ERROR:
-                        self.get_logger().error(f'Pipeline error: {msg.parse_error()}')
+                        err, debug = msg.parse_error()
+                        self.get_logger().error(f'Pipeline error: {err}, debug: {debug}')
                     elif msg.type == Gst.MessageType.EOS:
-                        self.get_logger().info('Recording complete')
+                        self.get_logger().info('Recording complete (EOS received on bus)')
+
+                    # Tear down pipeline on ERROR or EOS
                     self.is_recording = False
                     if self.pipeline:
+                        self.get_logger().info('Setting pipeline to NULL state from bus monitor')
                         self.pipeline.set_state(Gst.State.NULL)
+                    break
 
             Thread(target=monitor_bus, daemon=True).start()
 
