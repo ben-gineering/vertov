@@ -43,14 +43,14 @@ class VideoAgent(Node):
         self.get_logger().info('Services available at: /start_recording, /stop_recording')
 
     def create_pipeline(self, output_path):
-        """Create GStreamer recording pipeline."""
+        """Create GStreamer recording pipeline (H.264 in MKV container)."""
         pipeline_str = (
             "libcamerasrc ! "
             "video/x-raw,format=RGB,width=1920,height=1080,framerate=30/1 ! "
             "videoconvert ! "
             "x264enc tune=zerolatency speed-preset=ultrafast bitrate=4000 ! "
             "h264parse ! "
-            f"mp4mux ! filesink location={output_path}"
+            f"matroskamux ! filesink location={output_path}"
         )
         self.get_logger().info(f'Pipeline: {pipeline_str}')
         return Gst.parse_launch(pipeline_str)
@@ -65,7 +65,8 @@ class VideoAgent(Node):
             return response
 
         timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H-%M-%S-%f')[:-3] + 'Z'
-        filename = f"{timestamp}_{self.camera_id}.mp4"
+        # Use MKV container for robustness against EOS/finalization issues
+        filename = f"{timestamp}_{self.camera_id}.mkv"
         output_path = os.path.join(self.recording_dir, filename)
 
         try:
