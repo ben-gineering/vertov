@@ -21,7 +21,7 @@ This document covers the setup of the vertov distributed camera system on Raspbe
 - **DDS**: CycloneDDS
 - **Camera API**: libcamera (via GStreamer)
 - **Video Encoder**: v4l2h264enc (hardware H.264)
-- **Recording Format**: MP4 (H.264), 1920x1080@30fps
+- **Recording Format (on Pi)**: MKV (H.264), 1920x1080@30fps
 
 ## Installation Steps
 
@@ -141,7 +141,7 @@ ros2 node list
 │           ├── setup.py
 │           └── setup.cfg
 └── Videos/                 # Recording directory
-    └── (MP4 files saved here)
+    └── (MKV files saved here)
 ```
 
 ## Recording Workflow
@@ -159,8 +159,8 @@ ros2 service call /start_recording vertov_video/srv/StartRecording \
 
 ### Expected Output
 
-- Recording files: `/home/pi/Videos/{ISO_timestamp}_cam01.mp4`
-- Service response: `success: true`, `filename: "...mp4"`
+- Recording files: `/home/pi/Videos/{ISO_timestamp}_cam01.mkv`
+- Service response: `success: true`, `filename: "...mkv"`
 
 ## Troubleshooting
 
@@ -210,15 +210,18 @@ following behavior has been observed:
 This suggests an EOS/teardown issue specific to `libcamerasrc` at 1080p on this
 platform, rather than a general problem with `x264enc` or `mp4mux`.
 
-Workarounds for now:
+Workarounds and current recommendation:
 
 - Use a lower resolution pipeline (e.g. 640x480) that is known to shut down
   cleanly and produce valid MP4 files.
-- Alternatively, use `matroskamux` instead of `mp4mux` to record `.mkv` files,
-  which tend to be more robust to imperfect EOS handling:
+- Prefer using `matroskamux` instead of `mp4mux` to record `.mkv` files on the
+  Pi, which has proven more robust to imperfect EOS handling at 1080p. The
+  `vertov_video` ROS node records 1080p H.264 into MKV by default.
+- If you require MP4 for downstream tools, convert off-device (for example on
+  the Arch Linux control node) using a stream copy remux:
 
   ```bash
-  ... ! h264parse ! matroskamux ! filesink location=take_001.mkv
+  ffmpeg -i input.mkv -c copy output.mp4
   ```
 
 The 1080p + `libcamerasrc` + MP4 behavior should be revisited after future

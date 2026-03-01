@@ -131,10 +131,16 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        # Allow clean shutdown on Ctrl+C; rclpy may already have
+        # initiated shutdown via its own signal handlers.
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            # Ignore shutdown errors if the context was already shut down.
+            pass
 
 if __name__ == '__main__':
     main()
