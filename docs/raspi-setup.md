@@ -195,3 +195,31 @@ gst-inspect-1.0 libcamerasrc
 gst-inspect-1.0 v4l2h264enc
 gst-inspect-1.0 mp4mux
 ```
+
+### 1080p MP4 Files Missing `moov` Atom
+
+On Pi 5 with the IMX477 camera and the current libcamera + GStreamer stack, the
+following behavior has been observed:
+
+- Pipelines using `libcamerasrc` at 1920x1080 feeding `x264enc ! h264parse ! mp4mux`
+  can hang on EOS and produce MP4 files without a `moov` atom (`ffprobe` reports
+  `moov atom not found`).
+- The same encoder/mux chain at 1920x1080 using `videotestsrc` instead of
+  `libcamerasrc` produces valid MP4 files.
+
+This suggests an EOS/teardown issue specific to `libcamerasrc` at 1080p on this
+platform, rather than a general problem with `x264enc` or `mp4mux`.
+
+Workarounds for now:
+
+- Use a lower resolution pipeline (e.g. 640x480) that is known to shut down
+  cleanly and produce valid MP4 files.
+- Alternatively, use `matroskamux` instead of `mp4mux` to record `.mkv` files,
+  which tend to be more robust to imperfect EOS handling:
+
+  ```bash
+  ... ! h264parse ! matroskamux ! filesink location=take_001.mkv
+  ```
+
+The 1080p + `libcamerasrc` + MP4 behavior should be revisited after future
+libcamera/GStreamer updates.
