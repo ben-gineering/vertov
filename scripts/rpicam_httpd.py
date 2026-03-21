@@ -26,8 +26,8 @@ def _ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
-def _build_output_path(camera_id: str) -> (str, str):
-    timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S")
+def _build_output_path(camera_id: str) -> tuple[str, str]:
+    timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     recording_id = f"{timestamp}_{camera_id}"
     filename = f"{recording_id}.mp4"
     return recording_id, os.path.join(RECORDING_DIR, filename)

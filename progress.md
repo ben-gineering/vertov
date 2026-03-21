@@ -11,48 +11,62 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 ## Instructions
 
 - Use **Option A architecture**: rpicam-apps on host, ROS2 in Docker container
-- Recording format: **MP4 container** (user switched from H.264 due to previous issues, but still wants MP4)
-- Resolution: **720p@30fps** for initial tests
-- Do NOT modify `/boot/firmware/config.txt` further - the original `camera_auto_detect=1` setting worked before
-- Camera is **HQ Camera Module connected via CSI** interface
+- **HTTP bridge approach** for IPC: Flask server on host, ROS2 node makes HTTP calls from container
+- Recording format: **MP4 container** with H.264 codec
+- Resolution: **720p@30fps** for initial tests (1280x720)
+- Do NOT modify `/boot/firmware/config.txt` - use `camera_auto_detect=1` setting
+- Camera is **HQ Camera Module (imx477)** connected via CSI interface
 - Pi 3+ hardware (not Pi 5)
-- User clarified: ROS2 is NOT installed natively on Pi OS (that's the whole reason for Docker)
+- Use `network_mode: host` in Docker compose so container can reach `http://127.0.0.1:8080`
 
 ## Discoveries
 
-1. **Camera detection issue**: The `dtoverlay=imx219` overlay was incorrect for the HQ Camera. The original `camera_auto_detect=1` setting worked before the reboot. Need to keep that setting.
+1. **Camera detection**: The HQ Camera works with `camera_auto_detect=1` in config.txt. Avoid specific dtoverlays like `imx219`.
 
-2. **Architecture challenge**: Docker containers cannot directly execute host binaries. Need an IPC mechanism between Docker (ROS2) and host (rpicam-vid).
+2. **Architecture decision**: HTTP bridge (Flask) was chosen over ROS2 pip on host or native ROS2 install. This provides clean separation between ROS2 orchestration and camera control.
 
-3. **IPC solution chosen**: Implemented an HTTP bridge (`rpicam-httpd`) running on the Pi host using Flask. ROS2 in Docker talks to it via HTTP.
+3. **HTTP daemon test passed**: Successfully tested rpicam_httpd.py in isolation:
+   - All endpoints respond correctly (start, stop, status)
+   - 6-second test recording created valid 3.6MB MP4 file
+   - Camera runs stable at 30fps
+   - HQ Camera (imx477) auto-configured correctly by libcamera
 
-4. **Current state**: Pi has been rebooted, camera detection works, and the HTTP bridge plus ROS2 agent are wired together conceptually. End-to-end tests are next.
+4. **Python version**: Pi runs Python 3.13.5, Flask 3.1.1 already installed
+
+5. **Minor fix applied**: Changed `datetime.utcnow()` to `datetime.now()` to fix deprecation warning
+
+6. **Docker connectivity verified**: Container with `network_mode: host` can reach HTTP daemon on host at `127.0.0.1:8080`
+
+7. **Package import fix**: Removed unconditional `video_agent` import from `__init__.py` to prevent GStreamer dependency requirement for `rpicam_agent` (which only uses HTTP)
 
 ## Accomplished
 
 ### Completed:
-- ✅ Updated `/boot/firmware/config.txt` (reverted to `camera_auto_detect=1`) and rebooted Pi to restore camera detection
-- ✅ Created `docker/Dockerfile.vertov-pi` - ROS2 Jazzy base with Python pip support (now includes `requests`)
-- ✅ Created `docker/compose-pi.yml` - Docker compose with host network, privileged mode, volume mounts
-- ✅ Created `docker/entrypoint-pi.sh` - Entrypoint script for Pi container
-- ✅ Created initial `vertov_video/rpicam_agent.py` - ROS2 node for rpicam-vid control
-- ✅ Implemented HTTP-based RPICam agent: `vertov_video/rpicam_agent.py` now calls a host HTTP service instead of spawning `rpicam-vid` directly
-- ✅ Created `scripts/run_rpicam_agent.sh` - Launch script for rpicam agent (legacy, replaced by HTTP bridge in Docker)
-- ✅ Created `scripts/rpicam_vid_wrapper.sh` - Wrapper to call rpicam-vid from container (legacy, not used with HTTP bridge)
-- ✅ Created `scripts/rpicam_httpd.py` - Flask-based HTTP daemon on host that starts/stops `rpicam-vid`
-- ✅ Added `systemd/rpicam-httpd.service` - systemd unit to run HTTP daemon on boot
-- ✅ Updated `setup.py` to include rpicam_agent entry point
-- ✅ Updated `docs/quickstart-pi-rpicam.md` - Now documents HTTP bridge, systemd service, and Docker wiring
+- ✅ Created `scripts/rpicam_httpd.py` - Flask server controlling rpicam-vid on host
+- ✅ Updated `vertov_video/rpicam_agent.py` - ROS2 node that calls HTTP endpoints
+- ✅ Created `systemd/rpicam-httpd.service` - systemd unit for auto-start on boot
+- ✅ Created `docker/Dockerfile.vertov-pi` - ROS2 Jazzy with requests pip package
+- ✅ Created `docker/compose-pi.yml` - Docker compose with host network, volume mounts
+- ✅ Created `docker/entrypoint-pi.sh` - Container entrypoint script
+- ✅ Updated `docs/quickstart-pi-rpicam.md` - Comprehensive documentation
+- ✅ Created `scripts/run_rpicam_agent.sh` - Launch script for rpicam agent
+- ✅ Updated `setup.py` - Added rpicam_agent entry point
+- ✅ Created `progress.md` - Progress summary (committed to git)
+- ✅ **HTTP daemon tested successfully** - End-to-end recording via curl works
+- ✅ **Docker container built** - ROS2 Jazzy base with requests package
+- ✅ **Container → host connectivity verified** - HTTP calls from container work
+- ✅ **Fixed package imports** - Removed GStreamer dependency from rpicam_agent
 
 ### In Progress:
-- ⏳ **Host tooling**: Ensure Flask is installed correctly on the Pi and `rpicam_httpd.py` runs reliably under systemd
-- ⏳ **Validation**: Confirm MP4 output at 720p@30fps behaves as expected with rpicam-vid in this architecture
+- ⏳ **ROS2 + Docker integration test** - HTTP daemon works, container built, need to test full ROS2 service flow
 
 ### Remaining Work:
-- ❌ Test rpicam-vid directly at 720p@30 MP4: `rpicam-vid -t 5000 --width 1280 --height 720 --framerate 30 --codec mp4 -o test.mp4`
-- ❌ Run `scripts/rpicam_httpd.py` on the Pi and verify HTTP start/stop/status endpoints using curl
-- ❌ Build and test the Docker container on the Pi using `docker/compose-pi.yml`
-- ❌ Run `rpicam_agent` in the container and test end-to-end recording triggers via ROS2 services
+- ❌ Start rpicam-httpd as systemd service (or run in background)
+- ❌ Rebuild container after import fix and start fresh
+- ❌ Source ROS2 workspace and start rpicam_agent node from container
+- ❌ Test `/start_recording` and `/stop_recording` ROS2 services
+- ❌ Verify recordings appear in `/home/pi/Videos/`
+- ❌ Consider production hardening (WSGI server, error handling, logging)
 
 ## Relevant Files / Directories
 
@@ -62,10 +76,9 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 - `/home/pi/.local/src/vertov/docker/Dockerfile.vertov-pi` - Docker image for Pi
 - `/home/pi/.local/src/vertov/docker/entrypoint-pi.sh` - Container entrypoint
 - `/home/pi/.local/src/vertov/docker/cyclonedds_pc.xml` - DDS configuration
- - `/home/pi/.local/src/vertov/systemd/rpicam-httpd.service` - systemd service for HTTP daemon
 
 ### Source Code:
-- `/home/pi/.local/src/vertov/ros2_ws/src/vertov_video/vertov_video/rpicam_agent.py` - ROS2 agent node that calls host HTTP daemon
+- `/home/pi/.local/src/vertov/ros2_ws/src/vertov_video/vertov_video/rpicam_agent.py` - ROS2 agent node (needs IPC fix)
 - `/home/pi/.local/src/vertov/ros2_ws/src/vertov_video/vertov_video/video_agent.py` - Original GStreamer agent
 - `/home/pi/.local/src/vertov/ros2_ws/src/vertov_video/setup.py` - Package setup (updated with rpicam_agent entry point)
 - `/home/pi/.local/src/vertov/ros2_ws/src/vertov_video/srv/StartRecording.srv` - Service definition
@@ -74,7 +87,6 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 - `/home/pi/.local/src/vertov/scripts/run_rpicam_agent.sh` - Launch rpicam agent
 - `/home/pi/.local/src/vertov/scripts/run_video_agent.sh` - Original GStreamer agent launcher
 - `/home/pi/.local/src/vertov/scripts/rpicam_vid_wrapper.sh` - Wrapper for calling rpicam-vid
- - `/home/pi/.local/src/vertov/scripts/rpicam_httpd.py` - HTTP daemon for controlling rpicam-vid on host
 
 ### Documentation:
 - `/home/pi/.local/src/vertov/docs/quickstart-pi-rpicam.md` - Quickstart guide for Pi + rpicam setup

@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
     bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install --no-cache-dir --break-system-packages rclpy requests
+RUN pip3 install --no-cache-dir --break-system-packages requests
 
 WORKDIR /workspace/vertov
 
