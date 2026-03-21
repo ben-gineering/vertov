@@ -39,6 +39,8 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 
 7. **Package import fix**: Removed unconditional `video_agent` import from `__init__.py` to prevent GStreamer dependency requirement for `rpicam_agent` (which only uses HTTP)
 
+8. **Full integration test success**: Complete end-to-end test passed - ROS2 service calls from external client trigger recordings via HTTP bridge. Clean shutdown issue identified (double rclpy.shutdown() call) but harmless.
+
 ## Accomplished
 
 ### Completed:
@@ -56,17 +58,18 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 - ✅ **Docker container built** - ROS2 Jazzy base with requests package
 - ✅ **Container → host connectivity verified** - HTTP calls from container work
 - ✅ **Fixed package imports** - Removed GStreamer dependency from rpicam_agent
+- ✅ **Full ROS2 + Docker integration test PASSED** - End-to-end recording via ROS2 services works
+  - Tested on Arch Linux desktop (remote ROS2 client) and directly on Pi container
+  - Multiple recording cycles completed successfully
+  - MP4 files created in `/home/pi/Videos/`
+  - Architecture validated: ROS2 in container → HTTP bridge → rpicam-vid on host
 
 ### In Progress:
-- ⏳ **ROS2 + Docker integration test** - HTTP daemon works, container built, need to test full ROS2 service flow
+- ⏳ **Production hardening** - Minor cleanup items (rclpy shutdown, WSGI server)
 
 ### Remaining Work:
-- ❌ Start rpicam-httpd as systemd service (or run in background)
-- ❌ Rebuild container after import fix and start fresh
-- ❌ Source ROS2 workspace and start rpicam_agent node from container
-- ❌ Test `/start_recording` and `/stop_recording` ROS2 services
-- ❌ Verify recordings appear in `/home/pi/Videos/`
-- ❌ Consider production hardening (WSGI server, error handling, logging)
+- ❌ Start rpicam-httpd as systemd service on boot
+- ❌ Consider production hardening (WSGI server instead of Flask dev server, improved logging, error handling)
 
 ## Relevant Files / Directories
 
