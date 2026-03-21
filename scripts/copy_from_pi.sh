@@ -3,7 +3,8 @@
 set -euo pipefail
 
 # IP address or hostname of the Pi running the video agent
-PI_HOST="10.0.0.187"
+# PI_HOST="10.0.0.187"
+PI_HOST="10.20.10.1"
 
 # SSH user on the Pi
 PI_USER="pi"
