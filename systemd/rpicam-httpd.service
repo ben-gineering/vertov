@@ -1,0 +1,19 @@
+[Unit]
+Description=vertov rpicam HTTP control daemon
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/.local/src/vertov
+Environment=RPICAM_RECORDING_DIR=/home/pi/Videos
+Environment=RPICAM_PORT=8080
+Environment=RPICAM_DEFAULT_WIDTH=1280
+Environment=RPICAM_DEFAULT_HEIGHT=720
+Environment=RPICAM_DEFAULT_FRAMERATE=30
+Environment=CAMERA_ID=cam01
+ExecStart=/usr/bin/env python3 /home/pi/.local/src/vertov/scripts/rpicam_httpd.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
