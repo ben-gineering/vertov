@@ -1,129 +1,147 @@
-import rclpy
-from rclpy.node import Node
-from rclpy.callback_groups import ReentrantCallbackGroup
-from std_srvs.srv import Trigger
-import subprocess
 import os
-from datetime import datetime
-from threading import Thread, Lock
+from threading import Lock
+
+import requests
+import rclpy
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.node import Node
+from std_srvs.srv import Trigger
+
 
 class RPICamAgent(Node):
-    """ROS2 node for controlling video recording via rpicam-vid."""
+    """ROS2 node that controls rpicam-vid via HTTP on the host."""
 
     def __init__(self):
-        super().__init__('rpicam_agent')
-        self.get_logger().info('RPICamAgent initializing...')
+        super().__init__("rpicam_agent")
+        self.get_logger().info("RPICamAgent initializing (HTTP mode)...")
 
-        self.camera_id = os.environ.get('CAMERA_ID', 'cam01')
-        self.recording_dir = os.environ.get('RECORDING_DIR', '/home/pi/Videos')
-        self.resolution = os.environ.get('RESOLUTION', '1280x720')
-        self.framerate = int(os.environ.get('FRAMERATE', '30'))
-        
-        self.process = None
+        self.camera_id = os.environ.get("CAMERA_ID", "cam01")
+        self.recording_dir = os.environ.get("RECORDING_DIR", "/home/pi/Videos")
+        self.resolution = os.environ.get("RESOLUTION", "1280x720")
+        self.framerate = int(os.environ.get("FRAMERATE", "30"))
+        self.control_url = os.environ.get(
+            "RPICAM_CONTROL_URL", "http://127.0.0.1:8080"
+        ).rstrip("/")
+
         self.is_recording = False
+        self.current_recording_id = None
+        self.current_output_path = None
         self.lock = Lock()
 
         callback_group = ReentrantCallbackGroup()
         self.start_service = self.create_service(
             Trigger,
-            'start_recording',
+            "start_recording",
             self.start_recording_callback,
-            callback_group=callback_group
+            callback_group=callback_group,
         )
-
         self.stop_service = self.create_service(
             Trigger,
-            'stop_recording',
+            "stop_recording",
             self.stop_recording_callback,
-            callback_group=callback_group
+            callback_group=callback_group,
         )
 
-        os.makedirs(self.recording_dir, exist_ok=True)
+        self.get_logger().info(
+            f"RPICamAgent ready (camera_id: {self.camera_id}, resolution: {self.resolution}, "
+            f"control_url: {self.control_url})"
+        )
 
-        self.get_logger().info(f'RPICamAgent ready (camera_id: {self.camera_id}, resolution: {self.resolution})')
+    def _http_post(self, path: str, payload: dict) -> dict:
+        url = f"{self.control_url}{path}"
+        self.get_logger().debug(f"HTTP POST {url} payload={payload}")
+        resp = requests.post(url, json=payload, timeout=5.0)
+        resp.raise_for_status()
+        return resp.json()
 
     def start_recording_callback(self, request, response):
-        self.get_logger().info('Received recording request')
+        self.get_logger().info("Received start recording request")
 
         with self.lock:
             if self.is_recording:
                 response.success = False
-                response.message = 'Recording already in progress'
+                response.message = "Recording already in progress"
                 return response
 
-            timestamp = datetime.utcnow().strftime('%Y-%m-%dT%H-%M-%S')
-            filename = f"{timestamp}_{self.camera_id}.mp4"
-            output_path = os.path.join(self.recording_dir, filename)
+            try:
+                width_str, height_str = self.resolution.split("x")
+                width = int(width_str)
+                height = int(height_str)
+            except Exception:
+                response.success = False
+                response.message = (
+                    f"Invalid RESOLUTION '{self.resolution}', expected WxH"
+                )
+                return response
+
+            payload = {
+                "camera_id": self.camera_id,
+                "width": width,
+                "height": height,
+                "framerate": self.framerate,
+            }
 
             try:
-                width, height = self.resolution.split('x')
-                
-                cmd = [
-                    'rpicam-vid',
-                    '--width', width,
-                    '--height', height,
-                    '--framerate', str(self.framerate),
-                    '--codec', 'h264',
-                    '--output', output_path,
-                    '--timeout', '0',  # Run indefinitely until stopped
-                    '--listen',  # Listen for control commands
-                ]
-
-                self.get_logger().info(f'Starting rpicam-vid: {" ".join(cmd)}')
-                self.process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-
-                def monitor_process():
-                    self.process.wait()
-                    stdout, stderr = self.process.communicate()
-                    if stdout:
-                        self.get_logger().info(f'rpicam-vid stdout: {stdout.decode()}')
-                    if stderr:
-                        self.get_logger().info(f'rpicam-vid stderr: {stderr.decode()}')
-                    with self.lock:
-                        self.is_recording = False
-                        self.process = None
-                    self.get_logger().info(f'Recording finished: {output_path}')
-
-                Thread(target=monitor_process, daemon=True).start()
-
-                self.is_recording = True
-                response.success = True
-                response.message = output_path
-                self.get_logger().info(f'Started recording: {output_path}')
-
-            except Exception as e:
+                data = self._http_post("/recordings/start", payload)
+            except Exception as exc:
+                self.get_logger().error(f"HTTP error starting recording: {exc}")
                 response.success = False
-                response.message = str(e)
-                self.get_logger().error(f'Failed to start recording: {e}')
-                with self.lock:
-                    self.is_recording = False
-                    self.process = None
+                response.message = str(exc)
+                return response
 
+            if not data.get("success"):
+                msg = data.get("message", "Unknown error from rpicam-httpd")
+                self.get_logger().error(f"Failed to start recording: {msg}")
+                response.success = False
+                response.message = msg
+                return response
+
+            self.is_recording = True
+            self.current_recording_id = data.get("recording_id")
+            self.current_output_path = data.get("output_path")
+
+            response.success = True
+            response.message = self.current_output_path or "Recording started"
+            self.get_logger().info(
+                f"Started recording id={self.current_recording_id} path={self.current_output_path}"
+            )
             return response
 
     def stop_recording_callback(self, request, response):
-        self.get_logger().info('Received stop recording request')
+        self.get_logger().info("Received stop recording request")
 
         with self.lock:
-            if not self.is_recording or self.process is None:
+            if not self.is_recording or not self.current_recording_id:
                 response.success = False
-                response.message = 'No active recording'
+                response.message = "No active recording"
                 return response
 
-            try:
-                self.get_logger().info('Sending stop signal to rpicam-vid')
-                self.process.terminate()
-                response.success = True
-                response.message = 'Stopping recording'
-            except Exception as e:
-                self.get_logger().error(f'Failed to stop recording: {e}')
-                response.success = False
-                response.message = str(e)
+            payload = {"recording_id": self.current_recording_id}
 
+            try:
+                data = self._http_post("/recordings/stop", payload)
+            except Exception as exc:
+                self.get_logger().error(f"HTTP error stopping recording: {exc}")
+                response.success = False
+                response.message = str(exc)
+                return response
+
+            if not data.get("success"):
+                msg = data.get("message", "Unknown error from rpicam-httpd")
+                self.get_logger().error(f"Failed to stop recording: {msg}")
+                response.success = False
+                response.message = msg
+                return response
+
+            output_path = data.get("output_path") or self.current_output_path
+
+            self.is_recording = False
+            self.current_recording_id = None
+            self.current_output_path = None
+
+            response.success = True
+            response.message = output_path or "Stopping recording"
+            self.get_logger().info(f"Stopped recording, file: {output_path}")
             return response
 
 
@@ -135,10 +153,9 @@ def main(args=None):
     except KeyboardInterrupt:
         pass
     finally:
-        if node.process:
-            node.process.terminate()
         node.destroy_node()
         rclpy.shutdown()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
