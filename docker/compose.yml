@@ -1,0 +1,15 @@
+services:
+  ros2-dev:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ros2-jazzy
+    network_mode: host
+    volumes:
+      - ..:/workspace/vertov:rw
+    working_dir: /workspace/vertov
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=0
+      - CYCLONEDDS_URI=file:///workspace/vertov/docker/cyclonedds_pc.xml
+    tty: true
+    stdin_open: true

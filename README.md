@@ -37,13 +37,21 @@ vertov uses a dual-network approach:
 
 ## Software Stack
 
-- **OS:** Ubuntu 22.04 (Pi4/x86)
+- **OS:** Ubuntu 22.04 (Pi4) / Arch Linux (x86)
 - **ROS2 Distro:** Iron Irwini
 - **DDS:** CycloneDDS
 - **GStreamer:** 1.22+ with Python bindings
 - **Camera APIs:** libcamera (CSI), V4L2 (USB)
 - **Web Backend:** FastAPI or Node.js
 - **Frontend:** React or Vue
+
+## Hardware Stack
+
+- Pi5, Raspberry Pi Camera HQ
+- x86 Arch Linux, USBWebcam
+- Turtlebot 3, no camera yet
+- PhantomX Reactor Robot Arm, no camera yet
+- Android Tablet/Phone for webinterface use
 
 ## Project Structure
 

@@ -1,0 +1,6 @@
+string take_id
+builtin_interfaces/Time start_time
+---
+bool success
+string filename
+string error

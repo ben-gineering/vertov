@@ -133,6 +133,13 @@ vertov is a distributed camera and robotics control system for artistic video pr
 - Sample rate: 48kHz/24-bit (Blender VSE compatible)
 - Audio transient sync mark recorded at take start (see FR-SYNC-01)
 
+**FR-VIDEO-05:** Rolling Buffer Recording (Retrospective Takes)
+- Each video agent optionally supports a continuous "rolling" recording mode in addition to the explicit take-based mode.
+- In rolling mode, the agent maintains a circular buffer of the last *N* minutes of encoded video (and optionally audio) on local storage; *N* is configurable per node.
+- When the operator triggers "Save recent clip" (via Web UI or physical control), the system creates a new take that covers the last `duration_sec` seconds ending at a common `trigger_time`.
+- The orchestrator calls a per-agent service (see `SaveRecentClip` in §7.1) with `take_id`, `duration_sec`, and `trigger_time`; each agent persists the relevant portion of its rolling buffer as one or more MP4/WAV files and returns the filenames.
+- Rolling-buffer takes use the same metadata model as normal takes (sidecar JSON keyed by `take_id`) but are defined retrospectively rather than by a planned start/stop.
+
 ### 4.2 Robotics Control (FR-ROBOT)
 
 **FR-ROBOT-01:** Independent Robot Coordination
@@ -222,9 +229,9 @@ System states: IDLE → ARMING → RECORDING → STOPPING → SYNCING → IDLE
 
 | Component | Version/Type | Notes |
 |-----------|--------------|-------|
-| **OS** | Ubuntu 22.04 (Pi4/x86) | Or Raspberry Pi OS Lite + Docker for Pi agents |
-| **ROS2 Distro** | Iron Irwini | Non-LTS acceptable; upgrade path to J-turtle defined |
-| **DDS** | CycloneDDS (default) | Configure for WiFi resilience (fragmentation, UDP buffer size) |
+| **OS** | Ubuntu 22.04 (Pi4/5 agents); Linux host (e.g. Arch) + Ubuntu 24.04-based Docker image for control node | ROS2 runs natively on agents and in containers on x86 where needed |
+| **ROS2 Distro** | Jazzy Jalisco | Current target; future upgrades TBD |
+| **DDS** | CycloneDDS (`rmw_cyclonedds_cpp`) | Minimal config for now; production config for WiFi/dual-network resilience TBD |
 | **GStreamer** | 1.22+ | Python GI bindings for agent nodes |
 | **Camera APIs** | libcamera (CSI), V4L2 (USB) | Hardware encoding mandatory |
 | **Web Backend** | FastAPI (Python) or Node.js | Bridges HTTP/WebSocket to ROS2 |
@@ -254,6 +261,16 @@ System states: IDLE → ARMING → RECORDING → STOPPING → SYNCING → IDLE
 - **Control Plane:** 100Mbps Ethernet minimum, IGMP snooping enabled for DDS
 - **Sync Plane:** WiFi 5GHz (802.11ac) or Gigabit Ethernet
 - **Time Sync:** PTP Grandmaster (Control Node) or GPS-disciplined oscillator for outdoor
+
+### 6.4 Current Test Rigs
+
+The following setups are currently available and used for early MVP testing. They are a subset of the target hardware described above and may evolve over time.
+
+- **Video Agent Rig A:** Raspberry Pi 5 + Raspberry Pi High Quality Camera, USB SSD for local recording
+- **Control/Test Rig B:** x86 machine (Arch Linux) with USB webcam
+- **Mobile Base:** TurtleBot 3 (no camera mounted yet)
+- **Robot Arm:** PhantomX Reactor (no camera mounted yet)
+- **Operator Interface:** Android tablet/phone used as primary web interface client
 
 ---
 
@@ -291,6 +308,19 @@ builtin_interfaces/Time start_time  # Future timestamp for sync
 # Response
 bool success
 string filename
+string error
+```
+
+**Service:** `SaveRecentClip` (per camera agent)
+```
+# Request
+string take_id
+uint32 duration_sec
+builtin_interfaces/Time trigger_time  # When the operator pressed "save recent clip"
+---
+# Response
+bool success
+string[] filenames  # One or more files created on this agent
 string error
 ```
 
@@ -349,8 +379,9 @@ string robot_status
 ---
 
 **Next Steps:**
+0. MVP: Remote-triggered video-only recording from control node to a single Pi 5 agent (no robotics, no audio, no multi-node sync yet)
 1. Resolve TBD-01 (Robot hardware selection)
-2. Define ROS2 package structure (`studio_bringup`, `studio_video`, `studio_robot`)
+2. Define ROS2 package structure (`vertov_bringup`, `vertov_video`, `vertov_robot`)
 3. Prototype single-node recording (GStreamer + ROS2 service)
 
 **Approval Required From:** [Product Owner/Technical Lead]

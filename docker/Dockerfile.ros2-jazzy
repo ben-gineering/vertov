@@ -1,0 +1,21 @@
+FROM ros:jazzy-ros-base
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    python3-colcon-common-extensions \
+    ros-dev-tools \
+    ros-$ROS_DISTRO-rmw-cyclonedds-cpp \
+    vim \
+    less \
+    bash-completion \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace/vertov
+
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV ROS_DOMAIN_ID=0
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
