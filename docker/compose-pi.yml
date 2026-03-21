@@ -1,0 +1,21 @@
+services:
+  vertov-pi:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.vertov-pi
+    network_mode: host
+    privileged: true
+    volumes:
+      - ..:/workspace/vertov:rw
+      - /home/pi/Videos:/home/pi/Videos
+      - /usr/bin/rpicam-vid:/usr/bin/rpicam-vid:ro
+      - /usr/lib/aarch64-linux-gnu/libavcodec.so.60:/usr/lib/aarch64-linux-gnu/libavcodec.so.60:ro
+      - /usr/lib/aarch64-linux-gnu/libavformat.so.60:/usr/lib/aarch64-linux-gnu/libavformat.so.60:ro
+    working_dir: /workspace/vertov
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+      - ROS_DOMAIN_ID=0
+      - CYCLONEDDS_URI=file:///workspace/vertov/docker/cyclonedds_pc.xml
+    tty: true
+    stdin_open: true
+    command: bash

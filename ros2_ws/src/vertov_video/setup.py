@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'video_agent = vertov_video.video_agent:main',
             'video_agent_node = vertov_video.video_agent:main',
+            'rpicam_agent = vertov_video.rpicam_agent:main',
         ],
     },
 )
