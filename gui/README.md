@@ -5,22 +5,23 @@ Control webinterface for Cinemate camera + Zynthian synthesizer.
 ## Quick start
 
 ```bash
-pip install -r requirements.txt
-python main.py
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python main.py
 ```
 
 Open http://<pi-ip>:8080 in a browser.
 
 ## Configuration
 
-Edit the constants at the top of `main.py`:
+All config is set via environment variables (with defaults):
 
-| Constant | Default | Description |
+| Variable | Default | Description |
 |---|---|---|
 | `CINEMATE_REDIS_HOST` | `localhost` | Redis host for Cinemate |
 | `CINEMATE_REDIS_PORT` | `6379` | Redis port |
 | `CINEMATE_MJPEG_URL` | `http://localhost:8000/stream` | Live preview stream |
-| `ZYNTHIAN_HOST` | `zynthian.local` | Zynthian hostname |
+| `ZYNTHIAN_HOST` | `10.40.0.10` | Zynthian IP/hostname |
 | `ZYNTHIAN_OSC_PORT` | `1370` | Zynthian CUIA OSC port |
 
 ## Features

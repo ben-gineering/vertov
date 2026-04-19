@@ -9,6 +9,7 @@ Requires: nicegui, redis, python-osc
 """
 
 import logging
+import os
 from contextlib import suppress
 
 import redis
@@ -20,12 +21,12 @@ log = logging.getLogger("vertov.gui")
 # ---------------------------------------------------------------------------
 # Configuration (override via env or edit here)
 # ---------------------------------------------------------------------------
-CINEMATE_REDIS_HOST = "localhost"
-CINEMATE_REDIS_PORT = 6379
-CINEMATE_MJPEG_URL = "http://localhost:8000/stream"
+CINEMATE_REDIS_HOST = os.environ.get("CINEMATE_REDIS_HOST", "localhost")
+CINEMATE_REDIS_PORT = int(os.environ.get("CINEMATE_REDIS_PORT", "6379"))
+CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.0.0.186:8000/stream")
 
-ZYNTHIAN_HOST = "zynthian.local"
-ZYNTHIAN_OSC_PORT = 1370
+ZYNTHIAN_HOST = os.environ.get("ZYNTHIAN_HOST", "10.40.0.10")
+ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
 
 # ---------------------------------------------------------------------------
 # Connections
@@ -118,9 +119,18 @@ def main_page() -> None:
         # -- Camera panel --
         with ui.card().classes("w-80"):
             ui.label("Camera").classes("text-h6")
-            ui.image(CINEMATE_MJPEG_URL).style(
-                "width: 100%; border-radius: 8px; background: #1e1e1e;"
-            ).on("error", lambda: ui.notify("Camera stream unavailable", type="warning"))
+            ui.html(f'''
+            <div style="position:relative;width:100%;border-radius:8px;overflow:hidden;background:#1e1e1e;min-height:180px;">
+              <img src="{CINEMATE_MJPEG_URL}"
+                   style="width:100%;display:block;"
+                   onerror="var m=this.parentElement.querySelector('.reconnect-msg');
+                     m.style.display='flex';
+                     var self=this;
+                     setTimeout(function(){{self.src='{CINEMATE_MJPEG_URL}?t='+Date.now();m.style.display='none'}},2000)">
+              <div class="reconnect-msg"
+                   style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+                          color:#888;font-size:14px;background:rgba(0,0,0,0.5);">Reconnecting\u2026</div>
+            </div>''')
             global cam_status, cam_info, cam_btn
             cam_status = ui.label("idle").classes("text-caption text-grey")
             cam_info = ui.label("").classes("text-caption text-grey-6")
