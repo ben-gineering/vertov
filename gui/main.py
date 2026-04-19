@@ -5,16 +5,16 @@ Controls:
   - Cinemate camera via local Redis (start/stop recording)
   - Zynthian synth via OSC/CUIA (start/stop audio recording)
 
-Requires: nicegui, redis, python-osc
+Requires: nicegui, redis, liblo
 """
 
 import logging
 import os
 from contextlib import suppress
 
+import liblo
 import redis
 from nicegui import app, ui
-from pythonosc import udp_client
 
 log = logging.getLogger("vertov.gui")
 
@@ -32,7 +32,7 @@ ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
 # Connections
 # ---------------------------------------------------------------------------
 rdb = redis.Redis(host=CINEMATE_REDIS_HOST, port=CINEMATE_REDIS_PORT, decode_responses=True)
-zynthian_osc = udp_client.SimpleUDPClient(ZYNTHIAN_HOST, ZYNTHIAN_OSC_PORT)
+zynthian_osc_addr = liblo.Address(ZYNTHIAN_HOST, ZYNTHIAN_OSC_PORT)
 
 # ---------------------------------------------------------------------------
 # State
@@ -60,17 +60,29 @@ def toggle_camera() -> None:
         ui.notify(f"Camera error: {exc}", type="negative")
 
 
-def toggle_zynthian() -> None:
+def start_zynthian() -> None:
     global zynthian_rec
     try:
-        action = "STOP_AUDIO_RECORD" if zynthian_rec else "START_AUDIO_RECORD"
-        zynthian_osc.send_message(f"/cuia/{action}")
-        zynthian_rec = not zynthian_rec
-        zyn_btn.props(f'color={"blue" if zynthian_rec else "grey-7"}')
-        zyn_btn.props(f'label={"ZYN STOP" if zynthian_rec else "ZYN REC"}')
-        zyn_status.set_text("RECORDING" if zynthian_rec else "idle")
+        liblo.send(zynthian_osc_addr, "/CUIA/START_AUDIO_RECORD")
+        zynthian_rec = True
+        zyn_start_btn.props("color=blue")
+        zyn_stop_btn.props("color=grey-7")
+        zyn_status.set_text("RECORDING")
     except Exception as exc:
-        log.error("zynthian toggle failed: %s", exc)
+        log.error("zynthian start failed: %s", exc)
+        ui.notify(f"Zynthian error: {exc}", type="negative")
+
+
+def stop_zynthian() -> None:
+    global zynthian_rec
+    try:
+        liblo.send(zynthian_osc_addr, "/CUIA/STOP_AUDIO_RECORD")
+        zynthian_rec = False
+        zyn_start_btn.props("color=grey-7")
+        zyn_stop_btn.props("color=grey-7")
+        zyn_status.set_text("idle")
+    except Exception as exc:
+        log.error("zynthian stop failed: %s", exc)
         ui.notify(f"Zynthian error: {exc}", type="negative")
 
 
@@ -78,7 +90,7 @@ def toggle_zynthian() -> None:
 # Live status polling
 # ---------------------------------------------------------------------------
 def poll_status() -> None:
-    global camera_rec, zynthian_rec
+    global camera_rec
     with suppress(Exception):
         val = rdb.get("is_recording")
         camera_rec = val == "1"
@@ -142,12 +154,16 @@ def main_page() -> None:
         with ui.card().classes("w-80"):
             ui.label("Zynthian").classes("text-h6")
             ui.space().style("height: 200px")
-            global zyn_status, zyn_btn
+            global zyn_status, zyn_start_btn, zyn_stop_btn
             zyn_status = ui.label("idle").classes("text-caption text-grey")
             ui.label("").classes("text-caption text-grey-6")
-            zyn_btn = ui.button(
-                "ZYN REC", on_click=toggle_zynthian
-            ).props("color=grey-7 unelevated").classes("w-full")
+            with ui.row().classes("w-full gap-2"):
+                zyn_start_btn = ui.button(
+                    "ZYN REC", on_click=start_zynthian
+                ).props("color=grey-7 unelevated").classes("w-full")
+                zyn_stop_btn = ui.button(
+                    "ZYN STOP", on_click=stop_zynthian
+                ).props("color=grey-7 unelevated").classes("w-full")
 
     # Poll every 500ms for live status
     ui.timer(0.5, poll_status)

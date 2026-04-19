@@ -7,6 +7,8 @@ Control webinterface for Cinemate camera + Zynthian synthesizer.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+sudo apt install python3-liblo
+ln -sf /usr/lib/python3/dist-packages/liblo.*-linux-gnu.so .venv/lib/python3.11/site-packages/
 .venv/bin/python main.py
 ```
 

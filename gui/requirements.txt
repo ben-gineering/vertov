@@ -1,3 +1,4 @@
 nicegui>=2.0
 redis>=5.0
-python-osc>=1.9
+# liblo - install system package: sudo apt install python3-liblo
+# then symlink into venv: ln -sf /usr/lib/python3/dist-packages/liblo.*-linux-gnu.so .venv/lib/python3.11/site-packages/
