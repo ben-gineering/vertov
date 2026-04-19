@@ -44,20 +44,42 @@ zynthian_rec = False
 # ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
-def toggle_camera() -> None:
+def start_camera() -> None:
     global camera_rec
     try:
-        current = rdb.get("is_recording")
-        new_val = "0" if current == "1" else "1"
-        rdb.set("is_recording", new_val)
+        rdb.set("is_recording", "1")
         rdb.publish("cp_controls", "is_recording")
-        camera_rec = new_val == "1"
-        cam_btn.props(f'color={"red" if camera_rec else "grey-7"}')
-        cam_btn.props(f'label={"CAM STOP" if camera_rec else "CAM REC"}')
-        cam_status.set_text("RECORDING" if camera_rec else "idle")
+        camera_rec = True
+        cam_start_btn.props("color=red")
+        cam_stop_btn.props("color=grey-7")
+        cam_status.set_text("RECORDING")
     except Exception as exc:
-        log.error("camera toggle failed: %s", exc)
+        log.error("camera start failed: %s", exc)
         ui.notify(f"Camera error: {exc}", type="negative")
+
+
+def stop_camera() -> None:
+    global camera_rec
+    try:
+        rdb.set("is_recording", "0")
+        rdb.publish("cp_controls", "is_recording")
+        camera_rec = False
+        cam_start_btn.props("color=grey-7")
+        cam_stop_btn.props("color=grey-7")
+        cam_status.set_text("idle")
+    except Exception as exc:
+        log.error("camera stop failed: %s", exc)
+        ui.notify(f"Camera error: {exc}", type="negative")
+
+
+def start_all() -> None:
+    start_camera()
+    start_zynthian()
+
+
+def stop_all() -> None:
+    stop_camera()
+    stop_zynthian()
 
 
 def start_zynthian() -> None:
@@ -94,8 +116,8 @@ def poll_status() -> None:
     with suppress(Exception):
         val = rdb.get("is_recording")
         camera_rec = val == "1"
-        cam_btn.props(f'color={"red" if camera_rec else "grey-7"}')
-        cam_btn.props(f'label={"CAM STOP" if camera_rec else "CAM REC"}')
+        cam_start_btn.props("color=red" if camera_rec else "grey-7")
+        cam_stop_btn.props("color=grey-7")
         cam_status.set_text("RECORDING" if camera_rec else "idle")
 
         # FPS / buffer / storage info
@@ -143,12 +165,16 @@ def main_page() -> None:
                    style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;
                           color:#888;font-size:14px;background:rgba(0,0,0,0.5);">Reconnecting\u2026</div>
             </div>''')
-            global cam_status, cam_info, cam_btn
+            global cam_status, cam_info, cam_start_btn, cam_stop_btn
             cam_status = ui.label("idle").classes("text-caption text-grey")
             cam_info = ui.label("").classes("text-caption text-grey-6")
-            cam_btn = ui.button(
-                "CAM REC", on_click=toggle_camera
-            ).props("color=grey-7 unelevated").classes("w-full")
+            with ui.row().classes("w-full gap-2"):
+                cam_start_btn = ui.button(
+                    "CAM REC", on_click=start_camera
+                ).props("color=grey-7 unelevated").classes("w-full")
+                cam_stop_btn = ui.button(
+                    "CAM STOP", on_click=stop_camera
+                ).props("color=grey-7 unelevated").classes("w-full")
 
         # -- Zynthian panel --
         with ui.card().classes("w-80"):
@@ -163,6 +189,20 @@ def main_page() -> None:
                 ).props("color=grey-7 unelevated").classes("w-full")
                 zyn_stop_btn = ui.button(
                     "ZYN STOP", on_click=stop_zynthian
+                ).props("color=grey-7 unelevated").classes("w-full")
+
+        # -- Master panel --
+        with ui.card().classes("w-80"):
+            ui.label("Master").classes("text-h6")
+            ui.space().style("height: 200px")
+            master_status = ui.label("idle").classes("text-caption text-grey")
+            ui.label("").classes("text-caption text-grey-6")
+            with ui.row().classes("w-full gap-2"):
+                ui.button(
+                    "START REC", on_click=start_all
+                ).props("color=grey-7 unelevated").classes("w-full")
+                ui.button(
+                    "STOP REC", on_click=stop_all
                 ).props("color=grey-7 unelevated").classes("w-full")
 
     # Poll every 500ms for live status
