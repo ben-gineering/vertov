@@ -37,8 +37,7 @@ echo ""
 echo "Cleaning up old build artifacts..."
 sudo rm -rf "$WORKSPACE_HOST/build" "$WORKSPACE_HOST/install" "$WORKSPACE_HOST/log"
 
-# Enter as root, create fresh directories with correct ownership
+# Enter container as ros user (no password needed with -s)
 echo "Entering container..."
 echo ""
-sudo docker compose -f compose-robotarm.yml exec robotarm \
-    bash -c "su - ros -c 'bash'"
+sudo docker compose -f compose-robotarm.yml exec --user ros robotarm bash
