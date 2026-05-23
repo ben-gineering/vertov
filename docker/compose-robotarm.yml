@@ -1,0 +1,68 @@
+# PhantomX Robot Arm - Docker Compose for ROS 2 Humble
+# 
+# Usage:
+#   docker compose -f compose-robotarm.yml up --build    # Start container
+#   docker compose -f compose-robotarm.yml exec robotarm bash  # Get shell
+#   docker compose -f compose-robotarm.yml down          # Stop
+#
+# For RViz to display, you need to:
+#   1. Install xorg-xhost: sudo pacman -S xorg-xhost
+#   2. Allow Docker: xhost +local:docker
+#   3. Then start the compose stack
+
+services:
+  robotarm:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.robotarm
+    image: phantomx_robotarm:humble
+    container_name: phantomx_robotarm
+    hostname: phantomx
+    
+    # Keep container running (override default command)
+    command: ["sleep", "infinity"]
+    
+    # Network mode for ROS 2 discovery
+    network_mode: host
+    
+    # Privileged for USB serial access (ttyUSB0)
+    privileged: true
+    
+    # Run as host user to avoid permission issues with mounted volumes
+    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
+    
+    # Uncomment for specific device access instead of privileged:
+    # devices:
+    #   - /dev/ttyUSB0:/dev/ttyUSB0
+    
+    # Volumes
+    volumes:
+      # Workspace mount
+      - ${HOME}/.local/src/vertov/ros2_ws:/home/ros/ros2_ws
+      # X11 socket for GUI
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Optional: Xauthority for better security
+      # - ${HOME}/.Xauthority:/home/ros/.Xauthority:ro
+    
+    # Environment variables
+    environment:
+      - DISPLAY=${DISPLAY:-:0}
+      - QT_X11_NO_MITSHM=1
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      # Optional for Wayland compatibility:
+      # - GDK_BACKEND=x11
+      # - QT_QPA_PLATFORM=xcb
+    
+    # Working directory
+    working_dir: /home/ros/ros2_ws
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check (optional)
+    healthcheck:
+      test: ["CMD", "ros2", "node", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

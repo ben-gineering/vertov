@@ -4,6 +4,28 @@ This guide walks through setting up ROS 2 control for the PhantomX Reactor arm.
 
 ---
 
+## Quick Start with Docker (Recommended)
+
+If you don't want to install ROS 2 natively, use the Docker container:
+
+```bash
+# From project root
+cd docker/
+
+# Start container (handles permissions automatically)
+./run_robotarm_sudo.sh
+
+# Inside container:
+source /opt/ros/humble/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch phantomx_description display.launch.py
+```
+
+See `../docker/README.md` for complete Docker setup instructions.
+
+---
+
 ## Repository Structure
 
 ```
