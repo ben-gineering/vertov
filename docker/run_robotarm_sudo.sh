@@ -11,6 +11,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+WORKSPACE_HOST="$HOME/.local/src/vertov/ros2_ws"
+
 echo "Starting container..."
 echo ""
 
@@ -31,6 +33,12 @@ fi
 echo "Entering container as root..."
 echo ""
 
-# Enter as root, then switch to ros user with matching UID/GID
+# Clean up old build artifacts (created by wrong user)
+echo "Cleaning up old build artifacts..."
+sudo rm -rf "$WORKSPACE_HOST/build" "$WORKSPACE_HOST/install" "$WORKSPACE_HOST/log"
+
+# Enter as root, create fresh directories with correct ownership
+echo "Entering container..."
+echo ""
 sudo docker compose -f compose-robotarm.yml exec robotarm \
-    bash -c "chown -R $(id -u):$(id -g) /home/ros/ros2_ws && su - ros -c 'bash'"
+    bash -c "su - ros -c 'bash'"
