@@ -23,10 +23,11 @@ The **PhantomX Reactor** is a research-grade robotic arm from Interbotix Labs, d
 ## Hardware Components
 
 ### Actuators
-- **7x AX-12A Dynamixel Servos**
-  - 300° range of motion per joint
+- **8x AX-12A Dynamixel Servos**
+  - 300° range of motion per joint (0-1023 position units)
   - Real-time feedback (temperature, position, voltage, load)
   - User-adjustable compliance and torque settings
+  - Dual servos on shoulder and elbow for increased torque
 
 ### Controller
 - **ArbotiX Robocontroller**
@@ -46,16 +47,21 @@ The **PhantomX Reactor** is a research-grade robotic arm from Interbotix Labs, d
 
 ## Degrees of Freedom (Joints)
 
-| Joint | Name | Type |
-|-------|------|------|
-| 1 | `shoulder_yaw_joint` | Base rotation |
-| 2 | `shoulder_pitch_joint` | Shoulder pitch |
-| 3 | `elbow_pitch_joint` | Elbow pitch |
-| 4 | `wrist_pitch_joint` | Wrist pitch |
-| 5 | `wrist_roll_joint` | Wrist rotation (optional) |
-| Gripper | `gripper_revolute_joint` / `gripper_prismatic_joint` | Parallel gripper |
+| Joint | Name | Type | Servo IDs |
+|-------|------|------|----------|
+| 1 | Base | Rotation | ID 1 |
+| 2 | Shoulder Left | Pitch | ID 2 |
+| 3 | Shoulder Right | Pitch (mirrored) | ID 3 |
+| 4 | Elbow Left | Pitch | ID 4 |
+| 5 | Elbow Right | Pitch (mirrored) | ID 5 |
+| 6 | Wrist Tilt | Pitch | ID 6 |
+| 7 | Wrist Rotation | Roll | ID 7 |
+| 8 | Gripper | Open/close | ID 8 |
 
-**Joint Velocity Limit:** ~6.18 rad/s for all joints
+**Note:** Shoulder and elbow use dual servos (mirrored movement) for increased torque.
+
+**Position Range:** 0-1023 (0.29° resolution, ~300° total)
+**Gripper Special:** Rotating disc mechanism (0=closed, 256=open, 512=closed)
 
 ---
 

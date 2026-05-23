@@ -1,8 +1,13 @@
 /*
  * PhantomX Reactor - Basic Test Sketch
  * 
- * This sketch tests communication with the AX-12A Dynamixel servos
- * and provides basic control via serial commands.
+ * Correct servo ID mapping for PhantomX Reactor Arm:
+ *   ID 1: Base
+ *   ID 2,3: Shoulder (dual, mirrored)
+ *   ID 4,5: Elbow (dual, mirrored)
+ *   ID 6: Wrist tilt
+ *   ID 7: Wrist rotation
+ *   ID 8: Gripper
  */
 
 #include <ax12.h>
@@ -10,10 +15,13 @@
 
 // Servo IDs for PhantomX Reactor
 #define BASE_SERVO      1
-#define SHOULDER_SERVO  2
-#define ELBOW_SERVO     3
-#define WRIST_SERVO     4
-#define GRIPPER_SERVO   5
+#define SHOULDER_L      2  // Left shoulder
+#define SHOULDER_R      3  // Right shoulder (mirrored)
+#define ELBOW_L         4  // Left elbow
+#define ELBOW_R         5  // Right elbow (mirrored)
+#define WRIST_TILT      6
+#define WRIST_ROT       7
+#define GRIPPER         8
 
 // AX-12 Register addresses
 #define AX_TORQUE_ENABLE    24
@@ -21,15 +29,24 @@
 #define AX_GOAL_POS_L       30
 
 void setup() {
-    // Initialize serial communication
+    // Initialize serial communication at 115200 baud
     Serial.begin(115200);
     
     // Wait for serial port to connect
-    delay(1000);
+    delay(2000);
     
     Serial.println("################################");
     Serial.println("PhantomX Reactor - CLI Test");
     Serial.println("################################");
+    Serial.println("");
+    Serial.println("Servo Configuration:");
+    Serial.println("  ID 1: Base");
+    Serial.println("  ID 2,3: Shoulder (dual)");
+    Serial.println("  ID 4,5: Elbow (dual)");
+    Serial.println("  ID 6: Wrist tilt");
+    Serial.println("  ID 7: Wrist rotation");
+    Serial.println("  ID 8: Gripper");
+    Serial.println("");
     
     // Initialize AX-12 communication at 1Mbps
     ax12Init(1000000);
@@ -63,20 +80,23 @@ void loop() {
                 testMovement();
                 break;
             case '6':
-                checkGripperLimits();
+                checkServoLimits();
                 break;
             case '7':
-                gripperStep(25);   // Open slightly
+                gripperStep(10);   // Slightly open (small steps for fine control)
                 break;
             case '8':
-                gripperStep(-25);  // Close slightly
+                gripperStep(-10);  // Slightly close
                 break;
             case '9':
-                gripperStep(50);   // Open more
+                gripperStep(25);   // More open
                 break;
             case 'c':
             case 'C':
-                gripperStep(-50);  // Close more
+                gripperStep(-25);  // More close
+                break;
+            case 'e':
+                checkAllErrors();
                 break;
             case 'h':
             case '?':
@@ -91,175 +111,112 @@ void loop() {
 
 void printMenu() {
     Serial.println("Commands:");
-    Serial.println("  0 - Relax servos (power off)");
-    Serial.println("  1 - Hold servos (power on)");
+    Serial.println("  0 - Relax all servos (torque off)");
+    Serial.println("  1 - Hold all servos (torque on)");
     Serial.println("  2 - Get joint positions");
-    Serial.println("  3 - Gripper close (preset)");
-    Serial.println("  4 - Gripper open (preset)");
+    Serial.println("  3 - Gripper close (pos ~50)");
+    Serial.println("  4 - Gripper open (pos ~256)");
     Serial.println("  5 - Test movement sequence");
     Serial.println("  6 - Check servo angle limits");
-    Serial.println("  7 - Gripper +25 (slightly open)");
-    Serial.println("  8 - Gripper -25 (slightly close)");
-    Serial.println("  9 - Gripper +50 (more open)");
-    Serial.println("  c - Gripper -50 (more close)");
+    Serial.println("  7 - Gripper +10 (fine open)");
+    Serial.println("  8 - Gripper -10 (fine close)");
+    Serial.println("  9 - Gripper +25 (coarse open)");
+    Serial.println("  c - Gripper -25 (coarse close)");
+    Serial.println("  e - Read all servo error flags");
     Serial.println("  h/? - Show this menu");
+    Serial.println("");
+    Serial.println("NOTE: Gripper range is 0-512 (rotating disc)");
+    Serial.println("  0 = closed, 256 = open, 512 = closed");
     Serial.println("");
 }
 
 void relaxServos() {
     Serial.println("Relaxing all servos...");
-    ax12SetRegister(BASE_SERVO, AX_TORQUE_ENABLE, 0);
-    ax12SetRegister(SHOULDER_SERVO, AX_TORQUE_ENABLE, 0);
-    ax12SetRegister(ELBOW_SERVO, AX_TORQUE_ENABLE, 0);
-    ax12SetRegister(WRIST_SERVO, AX_TORQUE_ENABLE, 0);
-    ax12SetRegister(GRIPPER_SERVO, AX_TORQUE_ENABLE, 0);
-    Serial.println("Done.");
+    for (int id = 1; id <= 8; id++) {
+        ax12SetRegister(id, AX_TORQUE_ENABLE, 0);
+        delay(50);
+    }
+    Serial.println("Done. All servos relaxed (free movement).");
 }
 
 void holdServos() {
     Serial.println("Holding all servos...");
-    ax12SetRegister(BASE_SERVO, AX_TORQUE_ENABLE, 1);
-    ax12SetRegister(SHOULDER_SERVO, AX_TORQUE_ENABLE, 1);
-    ax12SetRegister(ELBOW_SERVO, AX_TORQUE_ENABLE, 1);
-    ax12SetRegister(WRIST_SERVO, AX_TORQUE_ENABLE, 1);
-    ax12SetRegister(GRIPPER_SERVO, AX_TORQUE_ENABLE, 1);
-    Serial.println("Done.");
+    for (int id = 1; id <= 8; id++) {
+        ax12SetRegister(id, AX_TORQUE_ENABLE, 1);
+        delay(50);
+    }
+    Serial.println("Done. All servos holding position.");
 }
 
 void printPositions() {
     Serial.println("Joint Positions:");
     
     int pos = ax12GetRegister(BASE_SERVO, AX_PRESENT_POS_L, 2);
-    Serial.print("  Base:    ");
-    Serial.println(pos);
+    Serial.print("  Base:           ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
     
-    pos = ax12GetRegister(SHOULDER_SERVO, AX_PRESENT_POS_L, 2);
-    Serial.print("  Shoulder: ");
-    Serial.println(pos);
+    pos = ax12GetRegister(SHOULDER_L, AX_PRESENT_POS_L, 2);
+    Serial.print("  Shoulder L (2): ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
     
-    pos = ax12GetRegister(ELBOW_SERVO, AX_PRESENT_POS_L, 2);
-    Serial.print("  Elbow:    ");
-    Serial.println(pos);
+    pos = ax12GetRegister(SHOULDER_R, AX_PRESENT_POS_L, 2);
+    Serial.print("  Shoulder R (3): ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
     
-    pos = ax12GetRegister(WRIST_SERVO, AX_PRESENT_POS_L, 2);
-    Serial.print("  Wrist:    ");
-    Serial.println(pos);
+    pos = ax12GetRegister(ELBOW_L, AX_PRESENT_POS_L, 2);
+    Serial.print("  Elbow L (4):    ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
     
-    pos = ax12GetRegister(GRIPPER_SERVO, AX_PRESENT_POS_L, 2);
-    Serial.print("  Gripper:  ");
-    Serial.println(pos);
+    pos = ax12GetRegister(ELBOW_R, AX_PRESENT_POS_L, 2);
+    Serial.print("  Elbow R (5):    ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
+    
+    pos = ax12GetRegister(WRIST_TILT, AX_PRESENT_POS_L, 2);
+    Serial.print("  Wrist Tilt (6): ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
+    
+    pos = ax12GetRegister(WRIST_ROT, AX_PRESENT_POS_L, 2);
+    Serial.print("  Wrist Rot (7):  ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
+    
+    pos = ax12GetRegister(GRIPPER, AX_PRESENT_POS_L, 2);
+    Serial.print("  Gripper (8):    ");
+    if (pos == -1) Serial.println("NO RESPONSE"); else Serial.println(pos);
+    
+    Serial.println("");
 }
 
 void gripperClose() {
     Serial.println("Closing gripper...");
-    // Gripper positions based on observed range (~612 current)
-    // Adjust these values based on your specific gripper mechanics
-    // Try: 500 = closed, 700 = open (modify if needed)
-    int closePos = 500;
-    ax12SetRegister2(GRIPPER_SERVO, AX_GOAL_POS_L, closePos);
+    // Gripper range: 0=closed, ~256=open, 512=closed again (rotating disc)
+    int closePos = 50;  // Near fully closed
+    ax12SetRegister2(GRIPPER, AX_GOAL_POS_L, closePos);
     Serial.print("Moving to position: ");
     Serial.println(closePos);
-    delay(1500);  // Wait longer for gripper to complete movement
+    delay(1500);
     Serial.println("Done.");
 }
 
 void gripperOpen() {
     Serial.println("Opening gripper...");
-    int openPos = 700;
-    ax12SetRegister2(GRIPPER_SERVO, AX_GOAL_POS_L, openPos);
+    // Gripper range: 0=closed, ~256=open, 512=closed again (rotating disc)
+    int openPos = 256;  // Midpoint = fully open
+    ax12SetRegister2(GRIPPER, AX_GOAL_POS_L, openPos);
     Serial.print("Moving to position: ");
     Serial.println(openPos);
-    delay(1500);  // Wait longer for gripper to complete movement
+    delay(1500);
     Serial.println("Done.");
 }
 
-void testMovement() {
-    Serial.println("Running test movement sequence...");
-    Serial.println("(Each movement takes 2-3 seconds)");
-    
-    // Wake up all servos
-    holdServos();
-    delay(1000);
-    
-    // Move base left-right (slowly)
-    Serial.println("\n1. Moving base left...");
-    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 400);
-    delay(3000);  // 3 seconds for slow, visible movement
-    
-    Serial.println("2. Moving base right...");
-    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 624);
-    delay(3000);
-    
-    Serial.println("3. Centering base...");
-    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 512);  // Center
-    delay(2000);
-    
-    // Move shoulder up-down
-    Serial.println("\n4. Moving shoulder up...");
-    ax12SetRegister2(SHOULDER_SERVO, AX_GOAL_POS_L, 300);
-    delay(3000);
-    
-    Serial.println("5. Moving shoulder down...");
-    ax12SetRegister2(SHOULDER_SERVO, AX_GOAL_POS_L, 512);
-    delay(3000);
-    
-    // Move elbow
-    Serial.println("\n6. Moving elbow up...");
-    ax12SetRegister2(ELBOW_SERVO, AX_GOAL_POS_L, 500);
-    delay(3000);
-    
-    Serial.println("7. Moving elbow down...");
-    ax12SetRegister2(ELBOW_SERVO, AX_GOAL_POS_L, 700);
-    delay(3000);
-    
-    // Return to observed home positions
-    Serial.println("\n8. Returning to home position...");
-    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 512);
-    ax12SetRegister2(SHOULDER_SERVO, AX_GOAL_POS_L, 359);
-    ax12SetRegister2(ELBOW_SERVO, AX_GOAL_POS_L, 660);
-    ax12SetRegister2(WRIST_SERVO, AX_GOAL_POS_L, 410);
-    delay(3000);
-    
-    Serial.println("\n✓ Test sequence complete.");
-    Serial.println("");
-}
-
-void checkGripperLimits() {
-    Serial.println("=== Gripper Servo Configuration ===");
-    
-    int cwLimit = ax12GetRegister(GRIPPER_SERVO, 6, 2);   // CW Angle Limit (min)
-    int ccwLimit = ax12GetRegister(GRIPPER_SERVO, 8, 2);  // CCW Angle Limit (max)
-    int maxTorque = ax12GetRegister(GRIPPER_SERVO, 14, 2); // Max Torque
-    int currentPos = ax12GetRegister(GRIPPER_SERVO, AX_PRESENT_POS_L, 2);
-    
-    Serial.print("Current Position: ");
-    Serial.println(currentPos);
-    Serial.print("CW Limit (min): ");
-    Serial.println(cwLimit);
-    Serial.print("CCW Limit (max): ");
-    Serial.println(ccwLimit);
-    Serial.print("Max Torque: ");
-    Serial.println(maxTorque);
-    
-    if (cwLimit == 0 && ccwLimit == 1023) {
-        Serial.println("");
-        Serial.println("WARNING: No angle limits configured!");
-        Serial.println("Servo can move full 0-1023 range.");
-        Serial.println("Use incremental commands (7,8,9,c) carefully.");
-        Serial.println("Listen for grinding or binding sounds.");
-    } else {
-        Serial.println("");
-        Serial.print("Safe range: ");
-        Serial.print(cwLimit);
-        Serial.print(" to ");
-        Serial.println(ccwLimit);
-    }
-    Serial.println("");
-}
-
 void gripperStep(int delta) {
-    // Get current position
-    int currentPos = ax12GetRegister(GRIPPER_SERVO, AX_PRESENT_POS_L, 2);
+    int currentPos = ax12GetRegister(GRIPPER, AX_PRESENT_POS_L, 2);
+    
+    if (currentPos == -1) {
+        Serial.println("ERROR: Cannot read gripper position!");
+        Serial.println("");
+        return;
+    }
+    
     int newPos = currentPos + delta;
     
     // Clamp to valid range
@@ -274,16 +231,150 @@ void gripperStep(int delta) {
     Serial.print(delta);
     Serial.println(")");
     
-    ax12SetRegister2(GRIPPER_SERVO, AX_GOAL_POS_L, newPos);
+    ax12SetRegister2(GRIPPER, AX_GOAL_POS_L, newPos);
     
     // Wait and verify
     delay(1000);
-    int actualPos = ax12GetRegister(GRIPPER_SERVO, AX_PRESENT_POS_L, 2);
+    int actualPos = ax12GetRegister(GRIPPER, AX_PRESENT_POS_L, 2);
     Serial.print("Actual position: ");
     Serial.println(actualPos);
     
     if (abs(actualPos - newPos) > 10) {
-        Serial.println("WARNING: Servo may have hit mechanical limit!");
+        Serial.println("WARNING: Servo may have hit mechanical limit or is in error state!");
     }
+    Serial.println("");
+}
+
+void testMovement() {
+    Serial.println("Running test movement sequence...");
+    Serial.println("(Each movement takes 2-3 seconds)");
+    
+    // Wake up all servos
+    holdServos();
+    delay(1000);
+    
+    // Move base left-right
+    Serial.println("\n1. Moving base left...");
+    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 400);
+    delay(3000);
+    
+    Serial.println("2. Moving base right...");
+    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 624);
+    delay(3000);
+    
+    Serial.println("3. Centering base...");
+    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 512);
+    delay(2000);
+    
+    // Move shoulder (both servos)
+    Serial.println("\n4. Moving shoulder up...");
+    ax12SetRegister2(SHOULDER_L, AX_GOAL_POS_L, 400);
+    ax12SetRegister2(SHOULDER_R, AX_GOAL_POS_L, 624);  // Mirrored
+    delay(3000);
+    
+    Serial.println("5. Moving shoulder down...");
+    ax12SetRegister2(SHOULDER_L, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(SHOULDER_R, AX_GOAL_POS_L, 512);
+    delay(3000);
+    
+    // Move elbow (both servos)
+    Serial.println("\n6. Moving elbow up...");
+    ax12SetRegister2(ELBOW_L, AX_GOAL_POS_L, 400);
+    ax12SetRegister2(ELBOW_R, AX_GOAL_POS_L, 624);  // Mirrored
+    delay(3000);
+    
+    Serial.println("7. Moving elbow down...");
+    ax12SetRegister2(ELBOW_L, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(ELBOW_R, AX_GOAL_POS_L, 512);
+    delay(3000);
+    
+    // Return to home positions
+    Serial.println("\n8. Returning to home position...");
+    ax12SetRegister2(BASE_SERVO, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(SHOULDER_L, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(SHOULDER_R, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(ELBOW_L, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(ELBOW_R, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(WRIST_TILT, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(WRIST_ROT, AX_GOAL_POS_L, 512);
+    ax12SetRegister2(GRIPPER, AX_GOAL_POS_L, 600);
+    delay(3000);
+    
+    Serial.println("\n✓ Test sequence complete.");
+    Serial.println("");
+}
+
+void checkServoLimits() {
+    Serial.println("=== Servo Angle Limits ===");
+    Serial.println("");
+    
+    const char* names[] = {"Base", "Shoulder L", "Shoulder R", "Elbow L", "Elbow R", "Wrist Tilt", "Wrist Rot", "Gripper"};
+    byte ids[] = {1, 2, 3, 4, 5, 6, 7, 8};
+    
+    for (int i = 0; i < 8; i++) {
+        Serial.print(names[i]);
+        Serial.print(" (ID=");
+        Serial.print(ids[i]);
+        Serial.print("): ");
+        
+        int cwLimit = ax12GetRegister(ids[i], 6, 2);
+        int ccwLimit = ax12GetRegister(ids[i], 8, 2);
+        
+        if (cwLimit == -1 || ccwLimit == -1) {
+            Serial.println("NO RESPONSE");
+            continue;
+        }
+        
+        Serial.print("CW=");
+        Serial.print(cwLimit);
+        Serial.print(", CCW=");
+        Serial.println(ccwLimit);
+    }
+    
+    Serial.println("");
+}
+
+void checkAllErrors() {
+    Serial.println("=== Servo Error Status ===");
+    Serial.println("");
+    
+    const char* names[] = {"Base", "Shoulder L", "Shoulder R", "Elbow L", "Elbow R", "Wrist Tilt", "Wrist Rot", "Gripper"};
+    byte ids[] = {1, 2, 3, 4, 5, 6, 7, 8};
+    
+    for (int i = 0; i < 8; i++) {
+        Serial.print(names[i]);
+        Serial.print(" (ID=");
+        Serial.print(ids[i]);
+        Serial.print("): ");
+        
+        int moving = ax12GetRegister(ids[i], 46, 1);
+        int load = ax12GetRegister(ids[i], 40, 2);
+        int voltage = ax12GetRegister(ids[i], 42, 1);
+        int temp = ax12GetRegister(ids[i], 43, 1);
+        
+        if (moving == -1) {
+            Serial.println("NO RESPONSE - check connection/power");
+            continue;
+        }
+        
+        Serial.print("Moving=");
+        Serial.print(moving);
+        Serial.print(", Load=");
+        Serial.print(load);
+        Serial.print(", Voltage=");
+        Serial.print(voltage / 10.0);
+        Serial.print("V, Temp=");
+        Serial.print(temp);
+        Serial.println("C");
+    }
+    
+    Serial.println("");
+    Serial.println("If LED is blinking, that servo is in SHUTDOWN state.");
+    Serial.println("Common causes:");
+    Serial.println("  - Overload (mechanical binding/stall)");
+    Serial.println("  - Overheating (>70C)");
+    Serial.println("  - Input voltage outside 6-14V");
+    Serial.println("");
+    Serial.println("To clear: send 0 (relax), then power cycle the servo.");
     Serial.println("");
 }

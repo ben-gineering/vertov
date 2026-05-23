@@ -94,13 +94,22 @@ screen /dev/ttyUSB0 115200
 **Available commands:**
 ```
 Commands:
-  0 - Relax servos (power off)
-  1 - Hold servos (power on)
-  2 - Get joint positions
-  3 - Gripper close
-  4 - Gripper open
+  0 - Relax all servos (torque off)
+  1 - Hold all servos (torque on)
+  2 - Get joint positions (all 8 servos)
+  3 - Gripper close (position ~50)
+  4 - Gripper open (position ~256)
   5 - Test movement sequence
+  6 - Check servo angle limits
+  7 - Gripper +10 (fine adjust open)
+  8 - Gripper -10 (fine adjust close)
+  9 - Gripper +25 (coarse adjust open)
+  c - Gripper -25 (coarse adjust close)
+  e - Read servo error status
   h/? - Show this menu
+
+NOTE: Gripper range is 0-512 (rotating disc)
+  0 = closed, 256 = open, 512 = closed
 ```
 
 **Test sequence:**
@@ -187,9 +196,28 @@ arduino-cli board listall | grep arbotix
 
 ### Servos Don't Move
 - Check power supply (12V 5A required)
-- Verify servo IDs match sketch (default: 1-5)
+- Verify servo IDs match sketch (PhantomX uses IDs 1-8)
 - Check AX-12 baud rate (1Mbps = 1000000)
 - Listen for error beeps from servos
+
+### Red LED Blinking on Servo
+**Indicates shutdown error** - servo has disabled torque to protect itself.
+
+**Common causes:**
+- Overload (mechanical binding/stall)
+- Overheating (>70°C)
+- Input voltage outside 6-14V range
+- Angle limit exceeded
+
+**To clear:**
+1. Send command `0` (relax all servos)
+2. Power cycle: disconnect 12V for 10 seconds, reconnect
+3. Check for mechanical binding before re-enabling torque
+
+### Gripper Not Responding
+- Check if another servo is in error state (blocks entire bus)
+- Gripper range is 0-512 (not 0-1023) due to rotating disc mechanism
+- Use commands `7/8` for fine adjustment to find working range
 
 ---
 
