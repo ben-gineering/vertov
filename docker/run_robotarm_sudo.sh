@@ -21,6 +21,12 @@ echo ""
 echo "Starting container..."
 echo ""
 
+# Create workspace directories with correct permissions for ros user (UID 1000)
+echo "Setting up workspace directories..."
+sudo mkdir -p "$WORKSPACE_HOST/src" "$WORKSPACE_HOST/build" "$WORKSPACE_HOST/install" "$WORKSPACE_HOST/log"
+sudo chown -R 1000:1000 "$WORKSPACE_HOST"
+echo ""
+
 # Allow X11 access
 if command -v xhost >/dev/null 2>&1; then
     xhost +local:docker >/dev/null 2>&1 || true
