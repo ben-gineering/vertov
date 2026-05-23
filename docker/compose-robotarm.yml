@@ -19,7 +19,7 @@ services:
     container_name: phantomx_robotarm
     hostname: phantomx
     
-    # Keep container running (override default command)
+    # Keep container running
     command: ["sleep", "infinity"]
     
     # Network mode for ROS 2 discovery
@@ -28,21 +28,12 @@ services:
     # Privileged for USB serial access (ttyUSB0)
     privileged: true
     
-    # Run as host user to avoid permission issues with mounted volumes
-    user: "${USER_ID:-1000}:${GROUP_ID:-1000}"
-    
-    # Uncomment for specific device access instead of privileged:
-    # devices:
-    #   - /dev/ttyUSB0:/dev/ttyUSB0
-    
     # Volumes
     volumes:
-      # Workspace mount
-      - ${HOME}/.local/src/vertov/ros2_ws:/home/ros/ros2_ws
+      # Mount workspace to /workspace (avoid permission issues with /home/ros)
+      - ${HOME}/.local/src/vertov/ros2_ws:/workspace:rw
       # X11 socket for GUI
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # Optional: Xauthority for better security
-      # - ${HOME}/.Xauthority:/home/ros/.Xauthority:ro
     
     # Environment variables
     environment:
@@ -54,15 +45,7 @@ services:
       # - QT_QPA_PLATFORM=xcb
     
     # Working directory
-    working_dir: /home/ros/ros2_ws
+    working_dir: /workspace
     
     # Restart policy
     restart: unless-stopped
-    
-    # Health check (optional)
-    healthcheck:
-      test: ["CMD", "ros2", "node", "list"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
