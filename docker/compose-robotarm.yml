@@ -31,7 +31,7 @@ services:
     # Volumes
     volumes:
       # Mount workspace to /workspace (avoid permission issues with /home/ros)
-      - ${HOME}/.local/src/vertov/ros2_ws:/workspace:rw
+      - /home/bn/.local/src/vertov/ros2_ws:/workspace:rw
       # X11 socket for GUI
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     

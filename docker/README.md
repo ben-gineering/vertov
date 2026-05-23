@@ -42,7 +42,7 @@ cd ~/src/vertov/docker
 xhost +local:docker
 
 # Start container
-docker compose -f compose-robotarm.yml up --build -d
+docker compose -f compose-robotarm.yml up -d
 
 # Enter container
 docker compose -f compose-robotarm.yml exec robotarm bash
@@ -51,9 +51,9 @@ docker compose -f compose-robotarm.yml exec robotarm bash
 ### 3. Build ROS 2 Workspace
 
 ```bash
-# Inside container
+# Inside container (workspace is at /workspace)
 source /opt/ros/humble/setup.bash
-cd ~/ros2_ws
+cd /workspace
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -88,10 +88,10 @@ RViz window should appear on your Sway desktop!
 
 ```bash
 cd ~/src/vertov/docker
-docker compose -f compose-robotarm.yml up --build -d
+docker compose -f compose-robotarm.yml up -d
 docker compose -f compose-robotarm.yml exec robotarm \
     bash -c "source /opt/ros/humble/setup.bash && \
-             cd ~/ros2_ws && colcon build && \
+             cd /workspace && colcon build && \
              source install/setup.bash && \
              ros2 launch phantomx_description display.launch.py"
 ```

@@ -17,6 +17,7 @@ cd docker/
 
 # Inside container:
 source /opt/ros/humble/setup.bash
+cd /workspace
 colcon build --symlink-install
 source install/setup.bash
 ros2 launch phantomx_description display.launch.py
