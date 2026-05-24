@@ -15,6 +15,7 @@ ament_python_install_package(${PROJECT_NAME})
 # Install Python executables
 install(PROGRAMS
   scripts/serial_bridge_node.py
+  scripts/nudge.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

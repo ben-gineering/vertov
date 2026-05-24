@@ -90,11 +90,31 @@ ros2 launch phantomx_hardware hardware.launch.py
 
 # In another terminal, send joint commands
 ros2 topic pub /joint_commands trajectory_msgs/msg/JointTrajectory "{
-  joint_names: ['base_joint', 'shoulder_pitch_joint', 'elbow_pitch_joint', 
-                'wrist_pitch_joint', 'wrist_roll_joint', 'gripper_joint'],
+  joint_names: ['shoulder_yaw_joint', 'shoulder_pitch_joint', 'elbow_pitch_joint', 
+                'wrist_pitch_joint', 'wrist_roll_joint', 'gripper_revolute_joint'],
   points: [{positions: [0.0, 0.5, -0.5, 0.0, 0.0, 0.0], time_from_start: {sec: 2}}]
 }"
 ```
+
+### 5. Small Incremental Movements
+
+Use the `nudge` utility for safe testing:
+
+```bash
+# Move shoulder yaw by 0.1 rad over 3 seconds
+ros2 run phantomx_hardware nudge.py --ros-args \
+  -p joint:=shoulder_yaw_joint \
+  -p delta:=0.1 \
+  -p time:=3.0
+
+# Close gripper slightly
+ros2 run phantomx_hardware nudge.py --ros-args \
+  -p joint:=gripper_revolute_joint \
+  -p delta:=-0.2 \
+  -p time:=2.0
+```
+
+Available joints: `shoulder_yaw_joint`, `shoulder_pitch_joint`, `elbow_pitch_joint`, `wrist_pitch_joint`, `wrist_roll_joint`, `gripper_revolute_joint`
 
 ---
 
