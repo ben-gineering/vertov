@@ -12,10 +12,11 @@ Usage:
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -38,13 +39,12 @@ def generate_launch_description():
         description='Use simulation time'
     )
 
-    # Package paths
+    # Package paths - use robots/ directory for main URDF
     pkg_desc = FindPackageShare('phantomx_description')
-    urdf_path = PathJoinSubstitution([pkg_desc, 'urdf', 'phantomx_reactor.urdf.xacro'])
+    urdf_path = PathJoinSubstitution([pkg_desc, 'robots', 'phantomx_reactor.urdf.xacro'])
 
-    # Read URDF
-    with open(urdf_path.perform(None), 'r') as f:
-        robot_desc = f.read()
+    # Process URDF with xacro
+    robot_desc = Command(['xacro ', urdf_path])
 
     # Serial bridge node
     serial_bridge_node = Node(
@@ -67,7 +67,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'robot_description': robot_desc,
+            'robot_description': ParameterValue(robot_desc, value_type=str),
         }],
     )
 

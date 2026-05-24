@@ -141,21 +141,48 @@ class SerialBridgeNode(Node):
         if not msg.points:
             return
         
-        # For now, just use the first point (single goal position)
+        # Use the first point (single goal position)
         point = msg.points[0]
+        
+        # Calculate time duration for this movement
+        time_sec = point.time_from_start.sec + point.time_from_start.nanosec / 1e9
+        if time_sec <= 0:
+            time_sec = 1.0  # Default 1 second
         
         # Convert from radians to position units (0-1023)
         positions = []
+        max_distance = 0
         for i, pos_rad in enumerate(point.positions):
             pos_units = int(pos_rad * self.RAD_TO_POS + 512)
             # Clamp to valid range
             pos_units = max(0, min(1023, pos_units))
             positions.append(pos_units)
+            # Track max distance any joint needs to move
+            dist = abs(pos_units - self.current_positions[i])
+            if dist > max_distance:
+                max_distance = dist
         
-        # Build POS command
+        # Calculate AX-12 speed value based on distance and time
+        # AX-12: 0=max speed, 1023=slowest
+        # We want slower speeds for longer times
+        # Formula: speed = max_distance / time_sec (units per second)
+        # Then map to AX-12 scale (inverse relationship)
+        if time_sec > 0 and max_distance > 0:
+            units_per_sec = max_distance / time_sec
+            # Map units/sec to AX-12 speed (tune these values)
+            # At 100 units/sec -> speed ~100 (moderate)
+            # At 10 units/sec -> speed ~500 (slow)
+            # At 500 units/sec -> speed ~20 (fast)
+            ax_speed = int(max(10, min(1023, 10000 / (units_per_sec + 1))))
+        else:
+            ax_speed = 300  # Default moderate speed
+        
+        # Build POS command with speed parameter
         # ROS has 6 joints, Arduino maps to 8 servos (dual shoulder/elbow are mirrored)
         # Joint order: shoulder_yaw, shoulder_pitch, elbow_pitch, wrist_pitch, wrist_roll, gripper
-        cmd = f"POS {positions[0]} {positions[1]} {positions[1]} {positions[2]} {positions[2]} {positions[3]} {positions[4]} {positions[5]}"
+        cmd = f"POS {positions[0]} {positions[1]} {positions[1]} {positions[2]} {positions[2]} {positions[3]} {positions[4]} {positions[5]} {ax_speed}"
+        
+        self.get_logger().info(f'Sending command: {cmd} (time={time_sec:.1f}s, speed={ax_speed})')
         
         response = self.send_command(cmd)
         

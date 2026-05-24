@@ -29,6 +29,14 @@
  *   
  *   BAUD <rate>
  *     Set serial baud rate (default: 115200)
+ *   
+ *   SPEED <0-1023>
+ *     Set moving speed for all servos
+ *     0 = max speed, 1023 = slowest
+ *     Default: 300
+ *   
+ *   POS <j1> <j2> <j3> <j4> <j5> <j6> [speed]
+ *     Set servo positions with optional speed override
  *
  * Servo Mapping (matching official URDF):
  *   ID 1: shoulder_yaw_joint
@@ -62,6 +70,10 @@ const byte SERVO_IDS[NUM_SERVOS] = {1, 2, 3, 4, 5, 6, 7, 8};
 #define MAX_CMD_LEN 128
 char cmdBuffer[MAX_CMD_LEN];
 int cmdIndex = 0;
+
+// Moving speed for all servos (AX-12: 0=max speed, 1023=slowest)
+// Default to moderate speed
+int movingSpeed = 300;
 
 void setup() {
     // Default to 115200 for ROS 2 serial communication
@@ -112,6 +124,8 @@ void processCommand(char* cmd) {
         handleServoTorque();
     } else if (strcmp(token, "BAUD") == 0) {
         handleBaud();
+    } else if (strcmp(token, "SPEED") == 0) {
+        handleSpeed();
     } else {
         Serial.print("ERROR: Unknown command '");
         Serial.print(token);
@@ -119,9 +133,13 @@ void processCommand(char* cmd) {
     }
 }
 
+// AX-12 moving speed register (controls how fast servos move to goal)
+#define AX_MOVING_SPEED_L 32
+
 void handleSetPositions() {
-    // ROS sends 6 joint values, we map to 8 servos
+    // ROS sends 6 joint values + optional speed, we map to 8 servos
     int rosPositions[6];
+    int speed = -1;  // -1 means use global default
     
     // Read 6 position values from ROS
     for (int i = 0; i < 6; i++) {
@@ -138,6 +156,28 @@ void handleSetPositions() {
             Serial.print(i+1);
             Serial.println(" out of range (0-1023)");
             return;
+        }
+    }
+    
+    // Optional: read speed parameter
+    char* speedToken = strtok(NULL, " \r\n");
+    if (speedToken) {
+        speed = atoi(speedToken);
+        if (speed < 0 || speed > 1023) {
+            Serial.println("ERROR: Speed out of range (0-1023)");
+            return;
+        }
+    }
+    
+    // Set moving speed if specified
+    if (speed >= 0) {
+        for (int i = 0; i < NUM_SERVOS; i++) {
+            ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, speed);
+        }
+    } else {
+        // Use global default speed
+        for (int i = 0; i < NUM_SERVOS; i++) {
+            ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, movingSpeed);
         }
     }
     
@@ -158,6 +198,30 @@ void handleSetPositions() {
     ax12SetRegister2(8, AX_GOAL_POS_L, rosPositions[5]);  // gripper
     
     Serial.println("OK");
+}
+
+void handleSpeed() {
+    char* token = strtok(NULL, " ");
+    if (!token) {
+        Serial.print("Current speed: ");
+        Serial.println(movingSpeed);
+        return;
+    }
+    
+    movingSpeed = atoi(token);
+    if (movingSpeed < 0 || movingSpeed > 1023) {
+        Serial.println("ERROR: Speed out of range (0-1023)");
+        movingSpeed = 300;  // Reset to default
+        return;
+    }
+    
+    // Apply new speed to all servos
+    for (int i = 0; i < NUM_SERVOS; i++) {
+        ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, movingSpeed);
+    }
+    
+    Serial.print("SPEED OK: ");
+    Serial.println(movingSpeed);
 }
 
 void handleGetPositions() {

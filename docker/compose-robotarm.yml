@@ -28,6 +28,10 @@ services:
     # Privileged for USB serial access (ttyUSB0)
     privileged: true
     
+    # Explicitly pass through USB serial device
+    devices:
+      - /dev/ttyUSB0:/dev/ttyUSB0
+    
     # Volumes
     volumes:
       # Mount workspace to /workspace (avoid permission issues with /home/ros)
