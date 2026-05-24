@@ -16,6 +16,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -28,7 +29,7 @@ def generate_launch_description():
 
     # Get package paths
     pkg_share = FindPackageShare('phantomx_description')
-    urdf_path = PathJoinSubstitution([pkg_share, 'urdf', 'phantomx_reactor.urdf.xacro'])
+    urdf_path = PathJoinSubstitution([pkg_share, 'robots', 'phantomx_reactor.urdf.xacro'])
     rviz_config = PathJoinSubstitution([pkg_share, 'config', 'phantomx.rviz'])
 
     # Robot state publisher (processes XACRO automatically)
@@ -39,7 +40,7 @@ def generate_launch_description():
         output='screen',
         parameters=[{
             'use_sim_time': LaunchConfiguration('use_sim_time'),
-            'robot_description': Command(['xacro ', urdf_path]),
+            'robot_description': ParameterValue(Command(['xacro ', urdf_path]), value_type=str),
         }],
     )
 

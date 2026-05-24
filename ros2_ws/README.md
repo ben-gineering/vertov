@@ -8,9 +8,27 @@ ROS 2 packages for controlling the PhantomX Reactor robot arm.
 
 | Package | Description |
 |---------|-------------|
-| `phantomx_description` | URDF model, meshes, RViz config |
+| `phantomx_description` | URDF model, meshes, RViz config (based on [Robotnik's official package](https://github.com/RobotnikAutomation/phantomx_reactor_arm)) |
 | `phantomx_hardware` | Serial bridge to Arduino, hardware interface |
 | `phantomx_bringup` | Launch files for complete system |
+
+### Joint Structure (from official URDF)
+
+```
+base_footprint (fixed)
+  └─ base_link
+      └─ shoulder_yaw_joint (Z-axis rotation, Servo ID 1)
+          └─ shoulder_link
+              └─ shoulder_pitch_joint (Servo IDs 2,3 dual)
+                  └─ bicep_link
+                      └─ elbow_pitch_joint (Servo IDs 4,5 dual)
+                          └─ forearm_link
+                              └─ wrist_pitch_joint (Servo ID 6)
+                                  └─ wrist_1_link
+                                      └─ wrist_roll_joint (Servo ID 7)
+                                          └─ wrist_2_link
+                                              └─ gripper_guide_link
+                                                  └─ gripper (Servo ID 8)
 
 ---
 
@@ -116,16 +134,19 @@ ros2 topic pub /joint_commands trajectory_msgs/msg/JointTrajectory "{
 
 ## Joint Mapping
 
-| Index | Joint Name | Servo IDs | Range (rad) | Range (units) |
-|-------|------------|-----------|-------------|---------------|
-| 0 | `base_joint` | 1 | ±π | 0-1023 |
-| 1 | `shoulder_pitch_joint` | 2, 3 (mirrored) | ±1.57 | 0-1023 |
-| 2 | `elbow_pitch_joint` | 4, 5 (mirrored) | ±1.57 | 0-1023 |
-| 3 | `wrist_pitch_joint` | 6 | ±1.57 | 0-1023 |
-| 4 | `wrist_roll_joint` | 7 | ±π | 0-1023 |
-| 5 | `gripper_joint` | 8 | ±1.57 | 0-1023 (effective: 0-512) |
+| Index | Joint Name | Servo IDs | Type | Range (rad) | Range (AX-12 units) |
+|-------|------------|-----------|------|-------------|---------------------|
+| 0 | `shoulder_yaw_joint` | 1 | Revolute (Z-axis) | ±π | 0-1023 |
+| 1 | `shoulder_pitch_joint` | 2, 3 (dual) | Revolute | ±π/2 | 0-1023 |
+| 2 | `elbow_pitch_joint` | 4, 5 (dual) | Revolute | ±π/2 | 0-1023 |
+| 3 | `wrist_pitch_joint` | 6 | Revolute | -1.7 to 1.9 | 0-1023 |
+| 4 | `wrist_roll_joint` | 7 | Revolute | ±π | 0-1023 |
+| 5 | `gripper_revolute_joint` | 8 | Revolute | ±π | 0-1023 (effective: 0-512) |
 
-**Note:** Shoulder and elbow use dual servos with mirrored movement (handled automatically).
+**Notes:**
+- Shoulder and elbow use dual servos with mirrored movement (handled in firmware)
+- Gripper has a rotating disc mechanism: 0=closed, 256=open, 512=closed
+- Joint limits from Robotnik's official URDF
 
 ---
 

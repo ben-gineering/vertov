@@ -11,7 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(urdf REQUIRED)
 
 # Install URDF files
-install(DIRECTORY urdf
+install(DIRECTORY urdf robots meshes
   DESTINATION share/${PROJECT_NAME}
 )
 

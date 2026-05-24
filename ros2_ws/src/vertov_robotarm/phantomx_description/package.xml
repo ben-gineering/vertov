@@ -3,7 +3,7 @@
 <package format="3">
   <name>phantomx_description</name>
   <version>0.1.0</version>
-  <description>URDF description and meshes for PhantomX Reactor robot arm</description>
+  <description>URDF description and meshes for PhantomX Reactor robot arm (based on Robotnik's official package)</description>
   <maintainer email="bn@vertov.local">bn</maintainer>
   <license>BSD-3-Clause</license>
 
