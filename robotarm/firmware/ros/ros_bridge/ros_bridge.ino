@@ -56,6 +56,7 @@
  */
 
 #include <ax12.h>
+#include <string.h>
 
 // Servo IDs
 #define NUM_SERVOS 8
@@ -137,67 +138,123 @@ void processCommand(char* cmd) {
 #define AX_MOVING_SPEED_L 32
 
 void handleSetPositions() {
-    // ROS sends 6 joint values + optional speed, we map to 8 servos
-    int rosPositions[6];
-    int speed = -1;  // -1 means use global default
+    // Peek ahead to count available tokens
+    // We need to detect: 6 values (ROS mode) vs 8 values (direct servo mode)
     
-    // Read 6 position values from ROS
-    for (int i = 0; i < 6; i++) {
-        char* token = strtok(NULL, " ");
-        if (!token) {
-            Serial.println("ERROR: Expected 6 positions (ROS joints)");
-            return;
+    // Save current position in token stream by re-parsing cmdBuffer
+    // Count space-separated values after "POS"
+    int valueCount = 0;
+    char* tempCmd = strdup(cmdBuffer);
+    char* saveptr;
+    char* token = strtok_r(tempCmd, " ", &saveptr);  // Skip "POS"
+    while ((token = strtok_r(NULL, " ", &saveptr)) != NULL) {
+        // Stop counting at newline/carriage return
+        char* nl = strchr(token, '\r');
+        if (nl) *nl = '\0';
+        nl = strchr(token, '\n');
+        if (nl) *nl = '\0';
+        if (strlen(token) > 0) {
+            valueCount++;
         }
-        rosPositions[i] = atoi(token);
+    }
+    free(tempCmd);
+    
+    // Re-parse original buffer for actual values
+    // Reset strtok by calling with original cmd (hacky but works)
+    
+    if (valueCount == 8) {
+        // Direct servo control mode: 8 values, one per servo
+        int servoPositions[8];
+        int speed = -1;
         
-        // Validate range
-        if (rosPositions[i] < 0 || rosPositions[i] > 1023) {
-            Serial.print("ERROR: Position ");
-            Serial.print(i+1);
-            Serial.println(" out of range (0-1023)");
-            return;
+        for (int i = 0; i < 8; i++) {
+            char* tok = strtok(NULL, " ");
+            if (!tok) {
+                Serial.println("ERROR: Expected 8 servo positions");
+                return;
+            }
+            servoPositions[i] = atoi(tok);
+            if (servoPositions[i] < 0 || servoPositions[i] > 1023) {
+                Serial.print("ERROR: Servo ");
+                Serial.print(i+1);
+                Serial.println(" position out of range");
+                return;
+            }
         }
-    }
-    
-    // Optional: read speed parameter
-    char* speedToken = strtok(NULL, " \r\n");
-    if (speedToken) {
-        speed = atoi(speedToken);
-        if (speed < 0 || speed > 1023) {
-            Serial.println("ERROR: Speed out of range (0-1023)");
-            return;
+        
+        // Optional speed
+        char* speedToken = strtok(NULL, " \r\n");
+        if (speedToken) {
+            speed = atoi(speedToken);
+            if (speed >= 0 && speed <= 1023) {
+                for (int i = 0; i < NUM_SERVOS; i++) {
+                    ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, speed);
+                }
+            }
+        } else {
+            for (int i = 0; i < NUM_SERVOS; i++) {
+                ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, movingSpeed);
+            }
         }
-    }
-    
-    // Set moving speed if specified
-    if (speed >= 0) {
+        
+        // Send directly to each servo
         for (int i = 0; i < NUM_SERVOS; i++) {
-            ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, speed);
+            ax12SetRegister2(SERVO_IDS[i], AX_GOAL_POS_L, servoPositions[i]);
         }
+        
+        Serial.println("OK");
+        
+    } else if (valueCount >= 6) {
+        // ROS mode: 6 joint values (+ optional speed), map to 8 servos with mirroring
+        int rosPositions[6];
+        int speed = -1;
+        
+        for (int i = 0; i < 6; i++) {
+            char* tok = strtok(NULL, " ");
+            if (!tok) {
+                Serial.println("ERROR: Expected 6 joint positions");
+                return;
+            }
+            rosPositions[i] = atoi(tok);
+            if (rosPositions[i] < 0 || rosPositions[i] > 1023) {
+                Serial.print("ERROR: Joint ");
+                Serial.print(i+1);
+                Serial.println(" position out of range");
+                return;
+            }
+        }
+        
+        // Optional speed
+        char* speedToken = strtok(NULL, " \r\n");
+        if (speedToken) {
+            speed = atoi(speedToken);
+            if (speed >= 0 && speed <= 1023) {
+                for (int i = 0; i < NUM_SERVOS; i++) {
+                    ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, speed);
+                }
+            }
+        } else {
+            for (int i = 0; i < NUM_SERVOS; i++) {
+                ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, movingSpeed);
+            }
+        }
+        
+        // Map 6 ROS joints to 8 physical servos with mirroring
+        ax12SetRegister2(1, AX_GOAL_POS_L, rosPositions[0]);  // shoulder_yaw
+        ax12SetRegister2(2, AX_GOAL_POS_L, rosPositions[1]);  // shoulder_pitch
+        ax12SetRegister2(3, AX_GOAL_POS_L, 1023 - rosPositions[1]);  // mirrored
+        ax12SetRegister2(4, AX_GOAL_POS_L, rosPositions[2]);  // elbow_pitch
+        ax12SetRegister2(5, AX_GOAL_POS_L, 1023 - rosPositions[2]);  // mirrored
+        ax12SetRegister2(6, AX_GOAL_POS_L, rosPositions[3]);  // wrist_pitch
+        ax12SetRegister2(7, AX_GOAL_POS_L, rosPositions[4]);  // wrist_roll
+        ax12SetRegister2(8, AX_GOAL_POS_L, rosPositions[5]);  // gripper
+        
+        Serial.println("OK");
+        
     } else {
-        // Use global default speed
-        for (int i = 0; i < NUM_SERVOS; i++) {
-            ax12SetRegister2(SERVO_IDS[i], AX_MOVING_SPEED_L, movingSpeed);
-        }
+        Serial.print("ERROR: Expected 6 (ROS) or 8 (direct) values, got ");
+        Serial.println(valueCount);
     }
-    
-    // Map 6 ROS joints to 8 physical servos
-    // Joint order: shoulder_yaw, shoulder_pitch, elbow_pitch, wrist_pitch, wrist_roll, gripper
-    ax12SetRegister2(1, AX_GOAL_POS_L, rosPositions[0]);  // shoulder_yaw
-    
-    // shoulder_pitch (dual servos, mirrored)
-    ax12SetRegister2(2, AX_GOAL_POS_L, rosPositions[1]);
-    ax12SetRegister2(3, AX_GOAL_POS_L, 1023 - rosPositions[1]);
-    
-    // elbow_pitch (dual servos, mirrored)
-    ax12SetRegister2(4, AX_GOAL_POS_L, rosPositions[2]);
-    ax12SetRegister2(5, AX_GOAL_POS_L, 1023 - rosPositions[2]);
-    
-    ax12SetRegister2(6, AX_GOAL_POS_L, rosPositions[3]);  // wrist_pitch
-    ax12SetRegister2(7, AX_GOAL_POS_L, rosPositions[4]);  // wrist_roll
-    ax12SetRegister2(8, AX_GOAL_POS_L, rosPositions[5]);  // gripper
-    
-    Serial.println("OK");
 }
 
 void handleSpeed() {
