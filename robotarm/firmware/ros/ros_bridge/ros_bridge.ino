@@ -2,6 +2,7 @@
  * PhantomX Reactor - ROS 2 Serial Bridge
  * 
  * This sketch bridges ROS 2 commands (via serial) to AX-12 servos.
+ * Matches Robotnik Automation's official URDF structure.
  * 
  * Protocol:
  *   Commands are ASCII strings terminated by newline
@@ -9,7 +10,8 @@
  *   
  * Commands:
  *   POS <j1> <j2> <j3> <j4> <j5> <j6> <j7> <j8>
- *     Set joint positions (0-1023 for each servo)
+ *     Set servo positions (0-1023 for each servo)
+ *     Note: ROS sends 6 joint values, this maps to 8 servos
  *   
  *   GET
  *     Get current joint positions
@@ -28,13 +30,21 @@
  *   BAUD <rate>
  *     Set serial baud rate (default: 115200)
  *
- * Servo Mapping:
- *   ID 1: Base
- *   ID 2,3: Shoulder (dual, mirrored)
- *   ID 4,5: Elbow (dual, mirrored)
- *   ID 6: Wrist tilt
- *   ID 7: Wrist rotation
- *   ID 8: Gripper
+ * Servo Mapping (matching official URDF):
+ *   ID 1: shoulder_yaw_joint
+ *   ID 2,3: shoulder_pitch_joint (dual, mirrored)
+ *   ID 4,5: elbow_pitch_joint (dual, mirrored)
+ *   ID 6: wrist_pitch_joint
+ *   ID 7: wrist_roll_joint
+ *   ID 8: gripper_revolute_joint
+ *
+ * Joint Order (ROS → Arduino):
+ *   [0] shoulder_yaw (servo 1)
+ *   [1] shoulder_pitch (servos 2,3 - auto-mirrored)
+ *   [2] elbow_pitch (servos 4,5 - auto-mirrored)
+ *   [3] wrist_pitch (servo 6)
+ *   [4] wrist_roll (servo 7)
+ *   [5] gripper (servo 8)
  */
 
 #include <ax12.h>
@@ -110,19 +120,20 @@ void processCommand(char* cmd) {
 }
 
 void handleSetPositions() {
-    int positions[NUM_SERVOS];
+    // ROS sends 6 joint values, we map to 8 servos
+    int rosPositions[6];
     
-    // Read 8 position values
-    for (int i = 0; i < NUM_SERVOS; i++) {
+    // Read 6 position values from ROS
+    for (int i = 0; i < 6; i++) {
         char* token = strtok(NULL, " ");
         if (!token) {
-            Serial.println("ERROR: Expected 8 positions");
+            Serial.println("ERROR: Expected 6 positions (ROS joints)");
             return;
         }
-        positions[i] = atoi(token);
+        rosPositions[i] = atoi(token);
         
         // Validate range
-        if (positions[i] < 0 || positions[i] > 1023) {
+        if (rosPositions[i] < 0 || rosPositions[i] > 1023) {
             Serial.print("ERROR: Position ");
             Serial.print(i+1);
             Serial.println(" out of range (0-1023)");
@@ -130,21 +141,21 @@ void handleSetPositions() {
         }
     }
     
-    // Send commands to servos
-    // Note: Servos 2&3 and 4&5 need mirroring
-    ax12SetRegister2(SERVO_IDS[0], AX_GOAL_POS_L, positions[0]);  // Base
+    // Map 6 ROS joints to 8 physical servos
+    // Joint order: shoulder_yaw, shoulder_pitch, elbow_pitch, wrist_pitch, wrist_roll, gripper
+    ax12SetRegister2(1, AX_GOAL_POS_L, rosPositions[0]);  // shoulder_yaw
     
-    // Shoulder (mirrored)
-    ax12SetRegister2(SERVO_IDS[1], AX_GOAL_POS_L, positions[1]);
-    ax12SetRegister2(SERVO_IDS[2], AX_GOAL_POS_L, 1023 - positions[1]);
+    // shoulder_pitch (dual servos, mirrored)
+    ax12SetRegister2(2, AX_GOAL_POS_L, rosPositions[1]);
+    ax12SetRegister2(3, AX_GOAL_POS_L, 1023 - rosPositions[1]);
     
-    // Elbow (mirrored)
-    ax12SetRegister2(SERVO_IDS[3], AX_GOAL_POS_L, positions[3]);
-    ax12SetRegister2(SERVO_IDS[4], AX_GOAL_POS_L, 1023 - positions[3]);
+    // elbow_pitch (dual servos, mirrored)
+    ax12SetRegister2(4, AX_GOAL_POS_L, rosPositions[2]);
+    ax12SetRegister2(5, AX_GOAL_POS_L, 1023 - rosPositions[2]);
     
-    ax12SetRegister2(SERVO_IDS[5], AX_GOAL_POS_L, positions[5]);  // Wrist tilt
-    ax12SetRegister2(SERVO_IDS[6], AX_GOAL_POS_L, positions[6]);  // Wrist rot
-    ax12SetRegister2(SERVO_IDS[7], AX_GOAL_POS_L, positions[7]);  // Gripper
+    ax12SetRegister2(6, AX_GOAL_POS_L, rosPositions[3]);  // wrist_pitch
+    ax12SetRegister2(7, AX_GOAL_POS_L, rosPositions[4]);  // wrist_roll
+    ax12SetRegister2(8, AX_GOAL_POS_L, rosPositions[5]);  // gripper
     
     Serial.println("OK");
 }

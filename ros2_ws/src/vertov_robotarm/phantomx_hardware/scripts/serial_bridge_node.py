@@ -36,14 +36,14 @@ class SerialBridgeNode(Node):
         publish_rate = self.get_parameter('publish_rate').value
         timeout = self.get_parameter('timeout').value
         
-        # Joint names matching URDF
+        # Joint names matching official Robotnik URDF
         self.joint_names = [
-            'base_joint',
+            'shoulder_yaw_joint',
             'shoulder_pitch_joint',
             'elbow_pitch_joint',
             'wrist_pitch_joint',
             'wrist_roll_joint',
-            'gripper_joint',
+            'gripper_revolute_joint',
         ]
         
         # Convert position units (0-1023) to radians
@@ -153,8 +153,8 @@ class SerialBridgeNode(Node):
             positions.append(pos_units)
         
         # Build POS command
-        # Note: We have 6 joints in URDF but 8 servos (dual shoulder/elbow)
-        # Map: base, shoulder, elbow, wrist_pitch, wrist_roll, gripper
+        # ROS has 6 joints, Arduino maps to 8 servos (dual shoulder/elbow are mirrored)
+        # Joint order: shoulder_yaw, shoulder_pitch, elbow_pitch, wrist_pitch, wrist_roll, gripper
         cmd = f"POS {positions[0]} {positions[1]} {positions[1]} {positions[2]} {positions[2]} {positions[3]} {positions[4]} {positions[5]}"
         
         response = self.send_command(cmd)
