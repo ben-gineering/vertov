@@ -25,16 +25,19 @@ All config is set via environment variables (with defaults):
 | `CINEMATE_MJPEG_URL` | `http://10.0.0.186:8000/stream` | Live preview stream |
 | `ZYNTHIAN_HOST` | `10.40.0.10` | Zynthian IP/hostname |
 | `ZYNTHIAN_OSC_PORT` | `1370` | Zynthian CUIA OSC port |
-| `VERTOV_DEVICE_CONFIG` | `gui/devices.example.json` | Multi-device config file |
+| `VERTOV_DEVICE_CONFIG` | `gui/devices.json` | Multi-device config file |
+| `VERTOV_STATE_DIR` | `gui/state` | Runtime manifests and device state |
 
 ### Multi-device foundations
 
 The GUI now includes the initial data model for scaling beyond one Cinepi and one Zynthian:
 
-- `gui/devices.example.json` - example device config
+- `gui/devices.json` - device config
 - `gui/vertov_models.py` - device config loader, take manifest schema, per-device state model
+- `gui/vertov_pull.py` - workstation-side ingest helper
+- `gui/ingest/config.json` - workstation ingest config
 
-`main.py` now builds the device cards dynamically from the device config, persists runtime state to `gui/state/`, and uses config-driven device lookup instead of hardcoded `cinepi_main` / `zynthian_main` assumptions.
+`main.py` now builds the device cards dynamically from the device config, persists runtime state to `gui/state/`, writes manifests to `gui/state/takes/`, and uses config-driven device lookup instead of hardcoded `cinepi_main` / `zynthian_main` assumptions.
 
 ## Systemd service
 

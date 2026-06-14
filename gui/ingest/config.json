@@ -1,0 +1,19 @@
+{
+  "vertov_host": {
+    "host": "10.0.0.186",
+    "ssh_user": "pi",
+    "manifest_dir": "/home/pi/vertov/gui/state/takes",
+    "active_manifest": "/home/pi/vertov/gui/state/active_take_manifest.json"
+  },
+  "local_storage": {
+    "root_dir": "~/vertov_ingest"
+  },
+  "matching": {
+    "start_margin_sec": 10,
+    "stop_margin_sec": 30,
+    "pull_all_matches": true
+  },
+  "transport": {
+    "tool": "rsync"
+  }
+}

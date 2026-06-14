@@ -39,8 +39,9 @@ CINEMATE_REDIS_PORT = int(os.environ.get("CINEMATE_REDIS_PORT", "6379"))
 CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.0.0.186:8000/stream")
 ZYNTHIAN_HOST = os.environ.get("ZYNTHIAN_HOST", "10.40.0.10")
 ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
-DEVICE_CONFIG_PATH = Path(os.environ.get("VERTOV_DEVICE_CONFIG", str(Path(__file__).with_name("devices.example.json"))))
+DEVICE_CONFIG_PATH = Path(os.environ.get("VERTOV_DEVICE_CONFIG", str(Path(__file__).with_name("devices.json"))))
 STATE_DIR = Path(os.environ.get("VERTOV_STATE_DIR", str(Path(__file__).with_name("state"))))
+TAKES_DIR = STATE_DIR / "takes"
 ACTIVE_MANIFEST_PATH = STATE_DIR / "active_take_manifest.json"
 DEVICE_STATES_PATH = STATE_DIR / "device_states.json"
 
@@ -69,6 +70,7 @@ def persist_runtime_state() -> None:
     save_device_states(DEVICE_STATES_PATH, device_states)
     if active_take_manifest is not None:
         save_manifest(ACTIVE_MANIFEST_PATH, active_take_manifest)
+        save_manifest(TAKES_DIR / f"{active_take_manifest.take_id}.json", active_take_manifest)
 
 
 def take_entry(device_id: str):
