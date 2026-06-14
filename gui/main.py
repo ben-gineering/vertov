@@ -39,6 +39,10 @@ zynthian_osc_addr = liblo.Address(ZYNTHIAN_HOST, ZYNTHIAN_OSC_PORT)
 # ---------------------------------------------------------------------------
 camera_rec = False
 zynthian_rec = False
+master_rec = False  # Track combined recording state
+
+ACTIVE_BUTTON_STYLE = "background: #c62828 !important; color: white !important;"
+IDLE_BUTTON_STYLE = "background: #757575 !important; color: white !important;"
 
 
 # ---------------------------------------------------------------------------
@@ -50,9 +54,8 @@ def start_camera() -> None:
         rdb.set("is_recording", "1")
         rdb.publish("cp_controls", "is_recording")
         camera_rec = True
-        cam_start_btn.props("color=red")
-        cam_stop_btn.props("color=grey-7")
-        cam_status.set_text("RECORDING")
+        log.info("Camera START requested")
+        update_camera_ui()
     except Exception as exc:
         log.error("camera start failed: %s", exc)
         ui.notify(f"Camera error: {exc}", type="negative")
@@ -64,9 +67,8 @@ def stop_camera() -> None:
         rdb.set("is_recording", "0")
         rdb.publish("cp_controls", "is_recording")
         camera_rec = False
-        cam_start_btn.props("color=grey-7")
-        cam_stop_btn.props("color=grey-7")
-        cam_status.set_text("idle")
+        log.info("Camera STOP requested")
+        update_camera_ui()
     except Exception as exc:
         log.error("camera stop failed: %s", exc)
         ui.notify(f"Camera error: {exc}", type="negative")
@@ -87,9 +89,8 @@ def start_zynthian() -> None:
     try:
         liblo.send(zynthian_osc_addr, "/CUIA/START_AUDIO_RECORD")
         zynthian_rec = True
-        zyn_start_btn.props("color=blue")
-        zyn_stop_btn.props("color=grey-7")
-        zyn_status.set_text("RECORDING")
+        log.info("Zynthian START requested")
+        update_zynthian_ui()
     except Exception as exc:
         log.error("zynthian start failed: %s", exc)
         ui.notify(f"Zynthian error: {exc}", type="negative")
@@ -100,25 +101,67 @@ def stop_zynthian() -> None:
     try:
         liblo.send(zynthian_osc_addr, "/CUIA/STOP_AUDIO_RECORD")
         zynthian_rec = False
-        zyn_start_btn.props("color=grey-7")
-        zyn_stop_btn.props("color=grey-7")
-        zyn_status.set_text("idle")
+        log.info("Zynthian STOP requested")
+        update_zynthian_ui()
     except Exception as exc:
         log.error("zynthian stop failed: %s", exc)
         ui.notify(f"Zynthian error: {exc}", type="negative")
 
 
 # ---------------------------------------------------------------------------
+# UI Updates
+# ---------------------------------------------------------------------------
+def set_button_active(btn, active: bool) -> None:
+    btn.style(ACTIVE_BUTTON_STYLE if active else IDLE_BUTTON_STYLE)
+
+
+def update_camera_ui_direct(is_rec: bool) -> None:
+    """Update Camera UI directly from polled value (used by poll_status)."""
+    global cam_start_btn, cam_stop_btn, cam_status
+    set_button_active(cam_start_btn, is_rec)
+    set_button_active(cam_stop_btn, False)
+    cam_status.set_text("RECORDING" if is_rec else "idle")
+
+
+def update_camera_ui() -> None:
+    update_camera_ui_direct(camera_rec)
+
+
+def update_zynthian_ui() -> None:
+    """Update Zynthian button colors and status based on local state."""
+    global zyn_start_btn, zyn_stop_btn, zyn_status
+    set_button_active(zyn_start_btn, zynthian_rec)
+    set_button_active(zyn_stop_btn, False)
+    zyn_status.set_text("RECORDING" if zynthian_rec else "idle")
+
+
+def update_master_ui() -> None:
+    """Update Master panel button colors and status."""
+    global master_start_btn, master_stop_btn, master_status
+    set_button_active(master_start_btn, master_rec)
+    set_button_active(master_stop_btn, False)
+    master_status.set_text("RECORDING" if master_rec else "idle")
+
+
+# ---------------------------------------------------------------------------
 # Live status polling
 # ---------------------------------------------------------------------------
 def poll_status() -> None:
-    global camera_rec
+    """Poll recording states and update UI."""
+    global master_rec
     with suppress(Exception):
-        val = rdb.get("is_recording")
-        camera_rec = val == "1"
-        cam_start_btn.props("color=red" if camera_rec else "grey-7")
-        cam_stop_btn.props("color=grey-7")
-        cam_status.set_text("RECORDING" if camera_rec else "idle")
+        # Camera: poll actual state from Redis (source of truth)
+        # Don't use local variable to avoid race condition with user actions
+        cam_val = rdb.get("is_recording")
+        cam_is_rec = cam_val == "1"
+        update_camera_ui_direct(cam_is_rec)
+
+        # Zynthian: use locally tracked state (no OSC query available)
+        update_zynthian_ui()
+
+        # Master: derived from camera + zynthian state
+        master_rec = cam_is_rec or zynthian_rec
+        update_master_ui()
 
         # FPS / buffer / storage info
         with suppress(Exception):
@@ -171,10 +214,10 @@ def main_page() -> None:
             with ui.row().classes("w-full gap-2"):
                 cam_start_btn = ui.button(
                     "CAM REC", on_click=start_camera
-                ).props("color=grey-7 unelevated").classes("w-full")
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
                 cam_stop_btn = ui.button(
                     "CAM STOP", on_click=stop_camera
-                ).props("color=grey-7 unelevated").classes("w-full")
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
 
         # -- Zynthian panel --
         with ui.card().classes("w-80"):
@@ -186,24 +229,25 @@ def main_page() -> None:
             with ui.row().classes("w-full gap-2"):
                 zyn_start_btn = ui.button(
                     "ZYN REC", on_click=start_zynthian
-                ).props("color=grey-7 unelevated").classes("w-full")
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
                 zyn_stop_btn = ui.button(
                     "ZYN STOP", on_click=stop_zynthian
-                ).props("color=grey-7 unelevated").classes("w-full")
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
 
         # -- Master panel --
         with ui.card().classes("w-80"):
             ui.label("Master").classes("text-h6")
             ui.space().style("height: 200px")
+            global master_status, master_start_btn, master_stop_btn
             master_status = ui.label("idle").classes("text-caption text-grey")
             ui.label("").classes("text-caption text-grey-6")
             with ui.row().classes("w-full gap-2"):
-                ui.button(
+                master_start_btn = ui.button(
                     "START REC", on_click=start_all
-                ).props("color=grey-7 unelevated").classes("w-full")
-                ui.button(
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
+                master_stop_btn = ui.button(
                     "STOP REC", on_click=stop_all
-                ).props("color=grey-7 unelevated").classes("w-full")
+                ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
 
     # Poll every 500ms for live status
     ui.timer(0.5, poll_status)
