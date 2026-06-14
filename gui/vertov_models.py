@@ -6,6 +6,7 @@ from enum import Enum
 import json
 from pathlib import Path
 from typing import Any
+import uuid
 
 
 class DeviceType(str, Enum):
@@ -103,6 +104,9 @@ class DeviceState:
     ingest_status: IngestStatus = IngestStatus.NOT_READY
     telemetry: dict[str, Any] = field(default_factory=dict)
 
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
     @classmethod
     def from_config(cls, config: DeviceConfig) -> "DeviceState":
         return cls(device_id=config.id, enabled=config.enabled)
@@ -166,10 +170,10 @@ class TakeManifest:
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def new(cls, take_id: str, devices: list[DeviceConfig]) -> "TakeManifest":
+    def new(cls, take_id: str | None, devices: list[DeviceConfig]) -> "TakeManifest":
         return cls(
             schema_version="1.0",
-            take_id=take_id,
+            take_id=take_id or f"take_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:6]}",
             created_at=utc_now(),
             devices=[
                 ManifestDeviceEntry(
@@ -200,4 +204,10 @@ def load_device_config(path: str | Path) -> list[DeviceConfig]:
 
 
 def save_manifest(path: str | Path, manifest: TakeManifest) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(manifest.to_json() + "\n")
+
+
+def save_device_states(path: str | Path, states: dict[str, DeviceState]) -> None:
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(json.dumps({k: v.to_dict() for k, v in states.items()}, indent=2) + "\n")

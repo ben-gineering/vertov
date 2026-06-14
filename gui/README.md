@@ -34,7 +34,7 @@ The GUI now includes the initial data model for scaling beyond one Cinepi and on
 - `gui/devices.example.json` - example device config
 - `gui/vertov_models.py` - device config loader, take manifest schema, per-device state model
 
-Current `main.py` still controls the existing single Cinepi + single Zynthian workflow, but now mirrors that into the per-device state model so the architecture can grow without changing the core concepts later.
+`main.py` now builds the device cards dynamically from the device config, persists runtime state to `gui/state/`, and uses config-driven device lookup instead of hardcoded `cinepi_main` / `zynthian_main` assumptions.
 
 ## Systemd service
 
