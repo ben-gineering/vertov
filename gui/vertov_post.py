@@ -101,11 +101,31 @@ def render_proxy(take_dir: Path) -> Path:
         "-i", str(cinepi_dir / "*.dng"),
         "-vf", "scale=1920:-2",
         "-c:v", "libx264",
+        "-preset", "ultrafast",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
         str(proxy),
     ])
     return proxy
+
+
+def render_lossless(take_dir: Path) -> Path:
+    info = inspect_take(take_dir)
+    cinepi_dir = Path(info["cinepi_dir"])
+    post_dir = ensure_post_dir(take_dir)
+    lossless = post_dir / "lossless.mkv"
+    run([
+        "ffmpeg", "-y",
+        "-framerate", str(info["fps"]),
+        "-pattern_type", "glob",
+        "-i", str(cinepi_dir / "*.dng"),
+        "-c:v", "libx264",
+        "-preset", "ultrafast",
+        "-qp", "0",
+        "-pix_fmt", "yuv420p",
+        str(lossless),
+    ])
+    return lossless
 
 
 def mux_audio(take_dir: Path) -> Path:
@@ -133,6 +153,33 @@ def mux_audio(take_dir: Path) -> Path:
     return output
 
 
+def mux_audio_lossless(take_dir: Path) -> Path:
+    info = inspect_take(take_dir)
+    post_dir = ensure_post_dir(take_dir)
+    lossless = post_dir / "lossless.mkv"
+    if not lossless.exists():
+        render_lossless(take_dir)
+    output = post_dir / "lossless_with_audio.mkv"
+    run([
+        "ffmpeg", "-y",
+        "-i", str(lossless),
+        "-i", info["audio_file"],
+        "-c:v", "copy",
+        "-c:a", "flac",
+        "-shortest",
+        str(output),
+    ])
+    metadata_path = post_dir / "metadata.json"
+    metadata = load_json(metadata_path) if metadata_path.exists() else info
+    metadata.update({
+        "lossless": str(lossless),
+        "lossless_with_audio": str(output),
+        "sync_mode": "align_start",
+    })
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+    return output
+
+
 def cmd_inspect(args):
     print(json.dumps(inspect_take(Path(args.take_dir)), indent=2))
 
@@ -150,10 +197,15 @@ def cmd_full(args):
     print(mux_audio(Path(args.take_dir)))
 
 
+def cmd_lossless(args):
+    render_lossless(Path(args.take_dir))
+    print(mux_audio_lossless(Path(args.take_dir)))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="command", required=True)
-    for name, func in (("inspect", cmd_inspect), ("proxy", cmd_proxy), ("mux", cmd_mux), ("full", cmd_full)):
+    for name, func in (("inspect", cmd_inspect), ("proxy", cmd_proxy), ("mux", cmd_mux), ("full", cmd_full), ("lossless", cmd_lossless)):
         sp = sub.add_parser(name)
         sp.add_argument("take_dir")
         sp.set_defaults(func=func)
