@@ -94,6 +94,7 @@ def update_take_entry_from_state(device_id: str) -> None:
     entry.output_file = state.latest_file
     entry.ingest_status = state.ingest_status
     entry.error = state.last_error
+    entry.metadata = dict(state.telemetry)
 
 
 def set_button_active(btn: ui.button, active: bool) -> None:
@@ -280,6 +281,12 @@ def poll_status() -> None:
                     buf = rr.get("buffer")
                     space = rr.get("space_left")
                     sensor = rr.get("sensor")
+                    state.telemetry.update({
+                        "sensor": sensor,
+                        "fps": fps,
+                        "buffer": buf,
+                        "space_left_gb": space,
+                    })
                     parts = [p for p in [sensor and f"sensor: {sensor}", fps and f"fps: {fps}", buf and f"buffer: {buf}", space and f"space: {space}GB"] if p]
                     info_refs[cfg.id].set_text(" | ".join([cfg.type.value, cfg.role.value, cfg.host] + parts))
             elif cfg.type is DeviceType.ZYNTHIAN:

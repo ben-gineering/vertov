@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from vertov_models import load_device_config, utc_now
+from vertov_models import utc_now
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DEVICE_CONFIG = BASE_DIR / "devices.json"
@@ -169,6 +169,17 @@ def ingest_from_manifest(manifest: dict[str, Any], devices_cfg: dict[str, Any], 
     return report
 
 
+def maybe_run_post(report: dict[str, Any], dry_run: bool) -> None:
+    if dry_run:
+        return
+    take_dir = report.get("destination")
+    if not take_dir:
+        return
+    reply = input("Run vertov_post.py full on this take? [Y/n] ").strip().lower()
+    if reply in {"", "y", "yes"}:
+        subprocess.run(["python3", str(BASE_DIR / "vertov_post.py"), "full", take_dir], check=False)
+
+
 def cmd_latest(args):
     ingest_cfg = load_json(Path(args.ingest_config))
     devices_cfg = load_json(Path(args.devices_config))
@@ -176,7 +187,9 @@ def cmd_latest(args):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = fetch_manifest_latest(ingest_cfg, tmp_dir, args.dry_run)
     manifest = load_json(manifest_path) if manifest_path.exists() else {"take_id": "dry_run", "devices": []}
-    print(json.dumps(ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run), indent=2))
+    report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
+    print(json.dumps(report, indent=2))
+    maybe_run_post(report, args.dry_run)
 
 
 def cmd_take(args):
@@ -186,14 +199,18 @@ def cmd_take(args):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = fetch_manifest_take(ingest_cfg, args.take_id, tmp_dir, args.dry_run)
     manifest = load_json(manifest_path) if manifest_path.exists() else {"take_id": args.take_id, "devices": []}
-    print(json.dumps(ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run), indent=2))
+    report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
+    print(json.dumps(report, indent=2))
+    maybe_run_post(report, args.dry_run)
 
 
 def cmd_manifest(args):
     ingest_cfg = load_json(Path(args.ingest_config))
     devices_cfg = load_json(Path(args.devices_config))
     manifest = load_json(Path(args.manifest_path))
-    print(json.dumps(ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run), indent=2))
+    report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
+    print(json.dumps(report, indent=2))
+    maybe_run_post(report, args.dry_run)
 
 
 def cmd_report(args):
