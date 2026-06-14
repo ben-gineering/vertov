@@ -120,13 +120,17 @@ class DeviceState:
         self.last_command_at = utc_now()
         self.command_status = CommandStatus.SENT
         self.desired_recording = desired_recording
+        if desired_recording:
+            self.started_at = utc_now()
+            self.stopped_at = None
         self.status = DeviceStatus.RECORDING if desired_recording else DeviceStatus.STOPPING
 
     def set_recording(self, active: bool) -> None:
         self.actual_recording = active
         self.status = DeviceStatus.RECORDING if active else DeviceStatus.IDLE
         if active:
-            self.started_at = self.started_at or utc_now()
+            self.started_at = utc_now()
+            self.stopped_at = None
         else:
             self.stopped_at = utc_now()
         self.command_status = CommandStatus.ACKED

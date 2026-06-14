@@ -14,7 +14,7 @@ from vertov_models import load_device_config, utc_now
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DEVICE_CONFIG = BASE_DIR / "devices.json"
 DEFAULT_INGEST_CONFIG = BASE_DIR / "ingest" / "config.json"
-VIDEO_EXTS = {".mp4", ".mov", ".mkv"}
+VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".dng"}
 AUDIO_EXTS = {".wav"}
 
 
@@ -36,7 +36,7 @@ def ssh_target(user: str, host: str) -> str:
     return f"{user}@{host}"
 
 
-def fetch_remote_file(user: str, host: str, remote_path: str, local_path: Path, dry_run: bool) -> None:
+def fetch_remote_path(user: str, host: str, remote_path: str, local_path: Path, dry_run: bool) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["rsync", "-av", f"{ssh_target(user, host)}:{remote_path}", str(local_path)]
     if dry_run:
@@ -48,27 +48,44 @@ def fetch_remote_file(user: str, host: str, remote_path: str, local_path: Path, 
 def fetch_manifest_latest(cfg: dict[str, Any], dest: Path, dry_run: bool) -> Path:
     vh = cfg["vertov_host"]
     remote = vh["active_manifest"]
+    local_path = dest / Path(remote).name
     if dry_run:
         print("DRY RUN: fetch manifest", remote)
-        return dest
+        return local_path
     run(["rsync", "-av", f"{ssh_target(vh['ssh_user'], vh['host'])}:{remote}", str(dest)])
-    return dest / Path(remote).name
+    return local_path
 
 
 def fetch_manifest_take(cfg: dict[str, Any], take_id: str, dest: Path, dry_run: bool) -> Path:
     vh = cfg["vertov_host"]
     remote = f"{vh['manifest_dir'].rstrip('/')}/{take_id}.json"
+    local_path = dest / f"{take_id}.json"
     if dry_run:
         print("DRY RUN: fetch manifest", remote)
-        return dest / f"{take_id}.json"
+        return local_path
     run(["rsync", "-av", f"{ssh_target(vh['ssh_user'], vh['host'])}:{remote}", str(dest)])
-    return dest / f"{take_id}.json"
+    return local_path
 
 
-def remote_find_candidates(user: str, host: str, remote_dir: str, exts: set[str]) -> list[dict[str, Any]]:
+def remote_find_file_candidates(user: str, host: str, remote_dir: str, exts: set[str]) -> list[dict[str, Any]]:
     ext_args = " -o ".join([f"-name '*{ext}'" for ext in sorted(exts)])
     cmd = (
         f"find {shlex.quote(remote_dir)} -maxdepth 1 -type f \\( {ext_args} \\) "
+        "-printf '%T@\t%p\n' | sort -n"
+    )
+    cp = run(["ssh", ssh_target(user, host), cmd])
+    items = []
+    for line in cp.stdout.splitlines():
+        if not line.strip():
+            continue
+        ts_raw, path = line.split("\t", 1)
+        items.append({"ts": float(ts_raw), "path": path})
+    return items
+
+
+def remote_find_dir_candidates(user: str, host: str, remote_dir: str) -> list[dict[str, Any]]:
+    cmd = (
+        f"find {shlex.quote(remote_dir)} -mindepth 1 -maxdepth 1 -type d "
         "-printf '%T@\t%p\n' | sort -n"
     )
     cp = run(["ssh", ssh_target(user, host), cmd])
@@ -95,8 +112,10 @@ def choose_candidates(manifest: dict[str, Any], device: dict[str, Any], device_c
     remote_dir = device_cfg.get("video_dir") or device_cfg.get("capture_dir")
     if not remote_dir:
         return []
-    exts = VIDEO_EXTS if device_cfg["type"] == "cinepi" else AUDIO_EXTS
-    candidates = remote_find_candidates(device_cfg["ssh_user"], device_cfg["host"], remote_dir, exts)
+    if device_cfg["type"] == "cinepi":
+        candidates = remote_find_dir_candidates(device_cfg["ssh_user"], device_cfg["host"], remote_dir)
+    else:
+        candidates = remote_find_file_candidates(device_cfg["ssh_user"], device_cfg["host"], remote_dir, AUDIO_EXTS)
     matches = [item["path"] for item in candidates if start_epoch <= item["ts"] <= stop_epoch]
     if ingest_cfg["matching"].get("pull_all_matches", True):
         return matches
@@ -138,7 +157,7 @@ def ingest_from_manifest(manifest: dict[str, Any], devices_cfg: dict[str, Any], 
             for remote_file in remote_files:
                 local_name = f"{device_id}_{Path(remote_file).name}"
                 local_path = take_dir / local_name
-                fetch_remote_file(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run)
+                fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run)
                 entry["local_files"].append(str(local_path))
             entry["status"] = "copied" if remote_files else "no_matches"
         except Exception as exc:
