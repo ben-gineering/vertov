@@ -99,7 +99,7 @@ def render_proxy(take_dir: Path) -> Path:
         "-framerate", str(info["fps"]),
         "-pattern_type", "glob",
         "-i", str(cinepi_dir / "*.dng"),
-        "-vf", "scale=1920:-1",
+        "-vf", "scale=1920:-2",
         "-c:v", "libx264",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
