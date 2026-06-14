@@ -38,7 +38,11 @@ def ssh_target(user: str, host: str) -> str:
 
 def fetch_remote_path(user: str, host: str, remote_path: str, local_path: Path, dry_run: bool) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["rsync", "-av", f"{ssh_target(user, host)}:{remote_path}", str(local_path)]
+    remote_spec = f"{ssh_target(user, host)}:{remote_path}"
+    if remote_path.endswith("/"):
+        cmd = ["rsync", "-av", remote_spec, str(local_path)]
+    else:
+        cmd = ["rsync", "-av", remote_spec, str(local_path)]
     if dry_run:
         print("DRY RUN:", shlex.join(cmd))
         return
@@ -157,7 +161,11 @@ def ingest_from_manifest(manifest: dict[str, Any], devices_cfg: dict[str, Any], 
             for remote_file in remote_files:
                 local_name = f"{device_id}_{Path(remote_file).name}"
                 local_path = take_dir / local_name
-                fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run)
+                if cfg["type"] == "cinepi":
+                    local_path.mkdir(parents=True, exist_ok=True) if not dry_run else None
+                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file.rstrip("/") + "/", local_path, dry_run)
+                else:
+                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run)
                 entry["local_files"].append(str(local_path))
             entry["status"] = "copied" if remote_files else "no_matches"
         except Exception as exc:

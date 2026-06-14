@@ -27,7 +27,12 @@ def find_cinepi_dir(take_dir: Path) -> Path:
     matches = [p for p in take_dir.iterdir() if p.is_dir() and p.name.startswith("cinepi_main_")]
     if len(matches) != 1:
         raise RuntimeError(f"expected exactly one cinepi directory in {take_dir}, found {len(matches)}")
-    return matches[0]
+    cinepi_dir = matches[0]
+    if not any(cinepi_dir.glob("*.dng")):
+        nested = [p for p in cinepi_dir.iterdir() if p.is_dir()]
+        if len(nested) == 1 and any(nested[0].glob("*.dng")):
+            cinepi_dir = nested[0]
+    return cinepi_dir
 
 
 def find_audio_file(take_dir: Path) -> Path:
