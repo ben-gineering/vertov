@@ -6,7 +6,7 @@
     "active_manifest": "/home/pi/vertov/gui/state/active_take_manifest.json"
   },
   "local_storage": {
-    "root_dir": "~/vertov_ingest"
+    "root_dir": "/tmp/vertov_ingest"
   },
   "matching": {
     "start_margin_sec": 10,
