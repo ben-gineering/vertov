@@ -1,0 +1,30 @@
+{
+  "devices": [
+    {
+      "id": "cinepi_main",
+      "name": "Cinepi Main",
+      "type": "cinepi",
+      "role": "video",
+      "host": "10.0.0.186",
+      "enabled": true,
+      "redis_host": "localhost",
+      "redis_port": 6379,
+      "mjpeg_url": "http://10.0.0.186:8000/stream",
+      "ssh_user": "pi",
+      "video_dir": "/home/pi/Videos",
+      "tags": ["main", "camera"]
+    },
+    {
+      "id": "zynthian_main",
+      "name": "Zynthian Main",
+      "type": "zynthian",
+      "role": "audio",
+      "host": "10.40.0.10",
+      "enabled": true,
+      "osc_port": 1370,
+      "ssh_user": "root",
+      "capture_dir": "/zynthian/zynthian-my-data/capture",
+      "tags": ["main", "audio"]
+    }
+  ]
+}

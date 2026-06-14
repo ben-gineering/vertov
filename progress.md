@@ -66,6 +66,7 @@ Set up a Raspberry Pi 3+ with Raspberry Pi OS to run the vertov distributed came
 
 ### In Progress:
 - ⏳ **Production hardening** - Minor cleanup items (rclpy shutdown, WSGI server)
+- ⏳ **Vertov GUI multi-device foundations** - device config, take manifest schema, per-device state model added
 
 ### Remaining Work:
 - ❌ Start rpicam-httpd as systemd service on boot

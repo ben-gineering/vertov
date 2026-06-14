@@ -11,10 +11,13 @@ Requires: nicegui, redis, liblo
 import logging
 import os
 from contextlib import suppress
+from pathlib import Path
 
 import liblo
 import redis
 from nicegui import app, ui
+
+from vertov_models import DeviceState, DeviceStatus, TakeManifest, load_device_config
 
 log = logging.getLogger("vertov.gui")
 
@@ -27,6 +30,7 @@ CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.0.0.186:800
 
 ZYNTHIAN_HOST = os.environ.get("ZYNTHIAN_HOST", "10.40.0.10")
 ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
+DEVICE_CONFIG_PATH = os.environ.get("VERTOV_DEVICE_CONFIG", str(Path(__file__).with_name("devices.example.json")))
 
 # ---------------------------------------------------------------------------
 # Connections
@@ -40,9 +44,17 @@ zynthian_osc_addr = liblo.Address(ZYNTHIAN_HOST, ZYNTHIAN_OSC_PORT)
 camera_rec = False
 zynthian_rec = False
 master_rec = False  # Track combined recording state
+active_take_manifest: TakeManifest | None = None
 
 ACTIVE_BUTTON_STYLE = "background: #c62828 !important; color: white !important;"
 IDLE_BUTTON_STYLE = "background: #757575 !important; color: white !important;"
+
+with suppress(Exception):
+    device_configs = load_device_config(DEVICE_CONFIG_PATH)
+if "device_configs" not in globals():
+    device_configs = []
+
+device_states = {config.id: DeviceState.from_config(config) for config in device_configs}
 
 
 # ---------------------------------------------------------------------------
@@ -54,9 +66,14 @@ def start_camera() -> None:
         rdb.set("is_recording", "1")
         rdb.publish("cp_controls", "is_recording")
         camera_rec = True
+        if "cinepi_main" in device_states:
+            device_states["cinepi_main"].command("start_record", True)
+            device_states["cinepi_main"].set_recording(True)
         log.info("Camera START requested")
         update_camera_ui()
     except Exception as exc:
+        if "cinepi_main" in device_states:
+            device_states["cinepi_main"].set_error(str(exc))
         log.error("camera start failed: %s", exc)
         ui.notify(f"Camera error: {exc}", type="negative")
 
@@ -67,14 +84,21 @@ def stop_camera() -> None:
         rdb.set("is_recording", "0")
         rdb.publish("cp_controls", "is_recording")
         camera_rec = False
+        if "cinepi_main" in device_states:
+            device_states["cinepi_main"].command("stop_record", False)
+            device_states["cinepi_main"].set_recording(False)
         log.info("Camera STOP requested")
         update_camera_ui()
     except Exception as exc:
+        if "cinepi_main" in device_states:
+            device_states["cinepi_main"].set_error(str(exc))
         log.error("camera stop failed: %s", exc)
         ui.notify(f"Camera error: {exc}", type="negative")
 
 
 def start_all() -> None:
+    global active_take_manifest
+    active_take_manifest = TakeManifest.new("current", device_configs)
     start_camera()
     start_zynthian()
 
@@ -89,9 +113,14 @@ def start_zynthian() -> None:
     try:
         liblo.send(zynthian_osc_addr, "/CUIA/START_AUDIO_RECORD")
         zynthian_rec = True
+        if "zynthian_main" in device_states:
+            device_states["zynthian_main"].command("start_record", True)
+            device_states["zynthian_main"].set_recording(True)
         log.info("Zynthian START requested")
         update_zynthian_ui()
     except Exception as exc:
+        if "zynthian_main" in device_states:
+            device_states["zynthian_main"].set_error(str(exc))
         log.error("zynthian start failed: %s", exc)
         ui.notify(f"Zynthian error: {exc}", type="negative")
 
@@ -101,9 +130,14 @@ def stop_zynthian() -> None:
     try:
         liblo.send(zynthian_osc_addr, "/CUIA/STOP_AUDIO_RECORD")
         zynthian_rec = False
+        if "zynthian_main" in device_states:
+            device_states["zynthian_main"].command("stop_record", False)
+            device_states["zynthian_main"].set_recording(False)
         log.info("Zynthian STOP requested")
         update_zynthian_ui()
     except Exception as exc:
+        if "zynthian_main" in device_states:
+            device_states["zynthian_main"].set_error(str(exc))
         log.error("zynthian stop failed: %s", exc)
         ui.notify(f"Zynthian error: {exc}", type="negative")
 
@@ -143,6 +177,20 @@ def update_master_ui() -> None:
     master_status.set_text("RECORDING" if master_rec else "idle")
 
 
+def update_device_model_ui() -> None:
+    global device_model_status
+    if not device_states:
+        device_model_status.set_text("No device config loaded")
+        return
+    lines = []
+    for device_id, state in device_states.items():
+        lines.append(
+            f"{device_id}: status={state.status.value} desired={state.desired_recording} "
+            f"actual={state.actual_recording} reachable={state.reachable}"
+        )
+    device_model_status.set_text("\n".join(lines))
+
+
 # ---------------------------------------------------------------------------
 # Live status polling
 # ---------------------------------------------------------------------------
@@ -162,6 +210,14 @@ def poll_status() -> None:
         # Master: derived from camera + zynthian state
         master_rec = cam_is_rec or zynthian_rec
         update_master_ui()
+
+        if "cinepi_main" in device_states:
+            device_states["cinepi_main"].mark_seen()
+            device_states["cinepi_main"].actual_recording = cam_is_rec
+            device_states["cinepi_main"].status = DeviceStatus.RECORDING if cam_is_rec else DeviceStatus.IDLE
+        if "zynthian_main" in device_states:
+            device_states["zynthian_main"].mark_seen()
+        update_device_model_ui()
 
         # FPS / buffer / storage info
         with suppress(Exception):
@@ -248,6 +304,11 @@ def main_page() -> None:
                 master_stop_btn = ui.button(
                     "STOP REC", on_click=stop_all
                 ).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
+
+    with ui.card().classes("w-full q-mt-md"):
+        ui.label("Device model").classes("text-subtitle2")
+        global device_model_status
+        device_model_status = ui.label("").classes("text-caption text-grey-5 whitespace-pre-wrap")
 
     # Poll every 500ms for live status
     ui.timer(0.5, poll_status)
