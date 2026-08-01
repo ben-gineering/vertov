@@ -1,6 +1,6 @@
 {
   "vertov_host": {
-    "host": "10.0.0.186",
+    "host": "10.0.0.188",
     "ssh_user": "pi",
     "manifest_dir": "/home/pi/vertov/gui/state/takes",
     "active_manifest": "/home/pi/vertov/gui/state/active_take_manifest.json"
