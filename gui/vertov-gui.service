@@ -9,7 +9,7 @@ User=pi
 Group=pi
 Environment=CINEMATE_REDIS_HOST=localhost
 Environment=CINEMATE_REDIS_PORT=6379
-Environment=CINEMATE_MJPEG_URL=http://10.0.0.186:8000/stream
+Environment=CINEMATE_MJPEG_URL=http://10.0.0.188:8000/stream
 Environment=ZYNTHIAN_HOST=10.40.0.10
 Environment=ZYNTHIAN_OSC_PORT=1370
 SyslogIdentifier=vertov-gui

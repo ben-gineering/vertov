@@ -36,7 +36,7 @@ log = logging.getLogger("vertov.gui")
 
 CINEMATE_REDIS_HOST = os.environ.get("CINEMATE_REDIS_HOST", "localhost")
 CINEMATE_REDIS_PORT = int(os.environ.get("CINEMATE_REDIS_PORT", "6379"))
-CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.0.0.186:8000/stream")
+CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.0.0.188:8000/stream")
 ZYNTHIAN_HOST = os.environ.get("ZYNTHIAN_HOST", "10.40.0.10")
 ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
 DEVICE_CONFIG_PATH = Path(os.environ.get("VERTOV_DEVICE_CONFIG", str(Path(__file__).with_name("devices.json"))))
