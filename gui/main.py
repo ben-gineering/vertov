@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import logging
 import os
+import urllib.request
 from contextlib import suppress
 from pathlib import Path
 
 import liblo
 import redis
-from nicegui import ui
+from nicegui import ui, app
+from starlette.responses import PlainTextResponse, StreamingResponse
 
 from vertov_models import (
     CommandStatus,
@@ -36,7 +38,7 @@ log = logging.getLogger("vertov.gui")
 
 CINEMATE_REDIS_HOST = os.environ.get("CINEMATE_REDIS_HOST", "localhost")
 CINEMATE_REDIS_PORT = int(os.environ.get("CINEMATE_REDIS_PORT", "6379"))
-CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://10.20.10.5:8000/stream")
+CINEMATE_MJPEG_URL = os.environ.get("CINEMATE_MJPEG_URL", "http://127.0.0.1:8000/stream")
 ZYNTHIAN_HOST = os.environ.get("ZYNTHIAN_HOST", "10.40.0.10")
 ZYNTHIAN_OSC_PORT = int(os.environ.get("ZYNTHIAN_OSC_PORT", "1370"))
 DEVICE_CONFIG_PATH = Path(os.environ.get("VERTOV_DEVICE_CONFIG", str(Path(__file__).with_name("devices.json"))))
@@ -64,6 +66,43 @@ info_refs: dict[str, ui.label] = {}
 
 active_take_manifest: TakeManifest | None = None
 master_rec = False
+
+
+def _mjpeg_proxy(request):
+    """Browser-facing MJPEG proxy.
+
+    The <img> in the device card uses a relative URL, so the browser only ever
+    talks to the GUI origin. The GUI fetches the upstream stream (e.g.
+    cinemate on 127.0.0.1) server-side and relays the bytes.
+    """
+    device_id = request.path_params["device_id"]
+    cfg = device_configs_by_id.get(device_id)
+    upstream_url = (cfg.mjpeg_url if cfg else None) or CINEMATE_MJPEG_URL
+    if not upstream_url:
+        return PlainTextResponse(f"no stream configured for {device_id}", status_code=404)
+    try:
+        upstream = urllib.request.urlopen(upstream_url, timeout=10)
+    except Exception as exc:
+        log.warning("stream proxy upstream error for %s: %s", device_id, exc)
+        return PlainTextResponse(f"stream upstream unavailable: {exc}", status_code=502)
+
+    content_type = upstream.headers.get("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+
+    def _relay():
+        try:
+            while True:
+                chunk = upstream.read(4096)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            with suppress(Exception):
+                upstream.close()
+
+    return StreamingResponse(_relay(), media_type=content_type)
+
+
+app.add_route("/media/stream/{device_id}", _mjpeg_proxy, methods=["GET"])
 
 
 def persist_runtime_state() -> None:
@@ -305,12 +344,12 @@ def build_device_card(cfg: DeviceConfig) -> None:
         if cfg.type is DeviceType.CINEPI and cfg.mjpeg_url:
             ui.html(f'''
             <div style="position:relative;width:100%;border-radius:8px;overflow:hidden;background:#1e1e1e;min-height:180px;">
-              <img src="{cfg.mjpeg_url}"
-                   style="width:100%;display:block;"
-                   onerror="var m=this.parentElement.querySelector('.reconnect-msg');
-                     m.style.display='flex';
-                     var self=this;
-                     setTimeout(function(){{self.src='{cfg.mjpeg_url}?t='+Date.now();m.style.display='none'}},2000)">
+            <img src="/media/stream/{cfg.id}"
+                 style="width:100%;display:block;"
+                 onerror="var m=this.parentElement.querySelector('.reconnect-msg');
+                   m.style.display='flex';
+                   var self=this;
+                   setTimeout(function(){{self.src='/media/stream/{cfg.id}?t='+Date.now();m.style.display='none'}},2000)">
               <div class="reconnect-msg"
                    style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;
                           color:#888;font-size:14px;background:rgba(0,0,0,0.5);">Reconnecting…</div>

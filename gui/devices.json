@@ -9,7 +9,7 @@
       "enabled": true,
       "redis_host": "localhost",
       "redis_port": 6379,
-      "mjpeg_url": "http://10.20.10.5:8000/stream",
+      "mjpeg_url": "http://127.0.0.1:8000/stream",
       "ssh_user": "pi",
       "video_dir": "/media/RAW",
       "tags": [
