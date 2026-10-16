@@ -42,14 +42,13 @@ def find_audio_file(take_dir: Path) -> Path:
     return matches[0]
 
 
-def detect_fps(manifest: dict[str, Any]) -> float:
+def detect_fps(manifest: dict[str, Any]) -> float | None:
+    fps = None
     for device in manifest.get("devices", []):
         if device.get("device_type") == "cinepi":
             fps = device.get("metadata", {}).get("fps")
-            if fps is None:
-                break
-            return float(fps)
-    raise RuntimeError("cinepi fps not found in manifest metadata")
+            break
+    return float(fps) if fps is not None else None
 
 
 def ffprobe_duration(path: Path) -> float:
@@ -69,14 +68,23 @@ def inspect_take(take_dir: Path) -> dict[str, Any]:
     frame_count = len(dng_files)
     if frame_count == 0:
         raise RuntimeError(f"no dng files found in {cinepi_dir}")
-    video_duration = frame_count / fps
     audio_duration = ffprobe_duration(audio_file)
+    # The audio clock is the sync master: derive the encoded frame rate from
+    # frame count and audio duration so the rendered video lasts exactly as
+    # long as the recorded audio. Manifest fps metadata can be wrong (e.g.
+    # cinemate stamps fps_actual=24 while the sensor captured 25.0) and frame
+    # pacing jitters mid-take, so any fixed fps label drifts against the audio.
+    effective_fps = frame_count / audio_duration if audio_duration > 0 else fps
+    if not effective_fps or effective_fps <= 0:
+        raise RuntimeError("cannot determine frame rate for rendering")
+    video_duration = frame_count / effective_fps
     return {
         "take_id": manifest["take_id"],
         "take_dir": str(take_dir),
         "cinepi_dir": str(cinepi_dir),
         "audio_file": str(audio_file),
         "fps": fps,
+        "effective_fps": round(effective_fps, 6),
         "frame_count": frame_count,
         "video_duration_sec": video_duration,
         "audio_duration_sec": audio_duration,
@@ -96,7 +104,7 @@ def render_proxy(take_dir: Path) -> Path:
     proxy = post_dir / "proxy.mp4"
     run([
         "ffmpeg", "-y",
-        "-framerate", str(info["fps"]),
+        "-framerate", f"{info['effective_fps']:.6f}",
         "-pattern_type", "glob",
         "-i", str(cinepi_dir / "*.dng"),
         "-vf", "scale=1920:-2",
@@ -116,7 +124,7 @@ def render_lossless(take_dir: Path) -> Path:
     lossless = post_dir / "lossless.mkv"
     run([
         "ffmpeg", "-y",
-        "-framerate", str(info["fps"]),
+        "-framerate", f"{info['effective_fps']:.6f}",
         "-pattern_type", "glob",
         "-i", str(cinepi_dir / "*.dng"),
         "-c:v", "libx264",
