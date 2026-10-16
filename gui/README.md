@@ -22,7 +22,7 @@ All config is set via environment variables (with defaults):
 |---|---|---|
 | `CINEMATE_REDIS_HOST` | `localhost` | Redis host for Cinemate |
 | `CINEMATE_REDIS_PORT` | `6379` | Redis port |
-| `CINEMATE_MJPEG_URL` | `http://127.0.0.1:8000/stream` | Live preview stream |
+| `CINEMATE_MJPEG_URL` | `http://10.20.10.5:8000/stream` | Live preview stream |
 | `ZYNTHIAN_HOST` | `10.40.0.10` | Zynthian IP/hostname |
 | `ZYNTHIAN_OSC_PORT` | `1370` | Zynthian CUIA OSC port |
 | `VERTOV_DEVICE_CONFIG` | `gui/devices.json` | Multi-device config file |
