@@ -583,9 +583,9 @@ def build_device_card(cfg: DeviceConfig) -> None:
         status_refs[cfg.id] = ui.label("idle").classes("text-caption text-grey")
         info_refs[cfg.id] = ui.label(f"{cfg.type.value} | {cfg.role.value} | {cfg.host}").classes("text-caption text-grey-6")
         with ui.row().classes("w-full items-center gap-2"):
-            ui.toggle("ARM V", value=state.armed_video,
+            ui.switch("ARM V", value=state.armed_video,
                       on_change=lambda e, did=cfg.id: set_arm(did, "video", e.value)).props("dense")
-            ui.toggle("ARM A", value=state.armed_audio,
+            ui.switch("ARM A", value=state.armed_audio,
                       on_change=lambda e, did=cfg.id: set_arm(did, "audio", e.value)).props("dense")
         if cfg.role in (DeviceRole.VIDEO, DeviceRole.HYBRID):
             with ui.row().classes("w-full items-center gap-2"):
