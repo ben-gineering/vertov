@@ -20,6 +20,12 @@ class DeviceRole(str, Enum):
     HYBRID = "hybrid"
 
 
+class CaptureMode(str, Enum):
+    NORMAL = "normal"
+    TIMELAPSE = "timelapse"
+    ROLLING = "rolling"
+
+
 class DeviceStatus(str, Enum):
     UNKNOWN = "unknown"
     IDLE = "idle"
@@ -92,6 +98,10 @@ class DeviceState:
     status: DeviceStatus = DeviceStatus.UNKNOWN
     desired_recording: bool = False
     actual_recording: bool = False
+    armed_video: bool = False
+    armed_audio: bool = False
+    capture_mode: CaptureMode = CaptureMode.NORMAL
+    mode_param: float = 600.0
     command_status: CommandStatus = CommandStatus.IDLE
     last_command: str | None = None
     last_command_at: str | None = None
@@ -149,6 +159,10 @@ class ManifestDeviceEntry:
     role: DeviceRole
     host: str
     expected: bool = True
+    armed_video: bool = True
+    armed_audio: bool = False
+    capture_mode: str = "normal"
+    mode_params: dict[str, Any] = field(default_factory=dict)
     command_status: CommandStatus = CommandStatus.IDLE
     recording_status: DeviceStatus = DeviceStatus.UNKNOWN
     started_at: str | None = None
@@ -191,6 +205,32 @@ class TakeManifest:
             ],
         )
 
+    @classmethod
+    def new_armed(cls, take_id: str | None, armed: list[tuple[DeviceConfig, bool, bool, "CaptureMode", float]]) -> "TakeManifest":
+        """Manifest over only the armed devices (schema 1.1).
+
+        `armed` items: (config, armed_video, armed_audio, capture_mode, mode_param).
+        """
+        return cls(
+            schema_version="1.1",
+            take_id=take_id or f"take_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}_{uuid.uuid4().hex[:6]}",
+            created_at=utc_now(),
+            devices=[
+                ManifestDeviceEntry(
+                    device_id=cfg.id,
+                    device_type=cfg.type,
+                    role=cfg.role,
+                    host=cfg.host,
+                    expected=True,
+                    armed_video=armed_video,
+                    armed_audio=armed_audio,
+                    capture_mode=mode.value,
+                    mode_params=mode_params_for(mode, param),
+                )
+                for cfg, armed_video, armed_audio, mode, param in armed
+            ],
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -200,6 +240,15 @@ class TakeManifest:
 
 def utc_now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def mode_params_for(mode: CaptureMode, param: float) -> dict[str, Any]:
+    if mode is CaptureMode.TIMELAPSE:
+        interval = max(0.2, float(param or 1.0))
+        return {"interval_s": interval, "capture_fps": round(1.0 / interval, 6), "playback_fps": 25}
+    if mode is CaptureMode.ROLLING:
+        return {"window_s": max(10.0, float(param or 600.0))}
+    return {}
 
 
 def load_device_config(path: str | Path) -> list[DeviceConfig]:
@@ -215,3 +264,11 @@ def save_manifest(path: str | Path, manifest: TakeManifest) -> None:
 def save_device_states(path: str | Path, states: dict[str, DeviceState]) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps({k: v.to_dict() for k, v in states.items()}, indent=2) + "\n")
+
+
+def load_device_states(path: str | Path) -> dict[str, dict[str, Any]]:
+    try:
+        data = json.loads(Path(path).read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
