@@ -344,10 +344,12 @@ async def _resolve_rec_folder(cfg: DeviceConfig, before_newest: str | None, time
 async def start_device(device_id: str, *, want_video: bool | None = None, want_audio: bool | None = None) -> None:
     cfg = device_configs_by_id[device_id]
     state = device_states[device_id]
-    if want_video is None:
-        want_video = cfg.role in (DeviceRole.VIDEO, DeviceRole.HYBRID)
-    if want_audio is None:
-        want_audio = cfg.role in (DeviceRole.AUDIO, DeviceRole.HYBRID)
+    if want_video is None or want_audio is None:
+        av, aa = _armed_legs(cfg)
+        if want_video is None:
+            want_video = av
+        if want_audio is None:
+            want_audio = aa
     try:
         state.command("start_record", True)
         if cfg.type is DeviceType.CINEPI and want_video:
@@ -445,16 +447,31 @@ async def stop_device(device_id: str, *, want_video: bool | None = None, want_au
         ui.notify(f"{cfg.name} error: {exc}", type="negative")
 
 
+def _armed_legs(cfg: DeviceConfig) -> tuple[bool, bool]:
+    """Armed A/V legs of a device, intersected with what its role can do."""
+    state = device_states[cfg.id]
+    av = bool(state.armed_video) and cfg.role in (DeviceRole.VIDEO, DeviceRole.HYBRID)
+    aa = bool(state.armed_audio) and cfg.role in (DeviceRole.AUDIO, DeviceRole.HYBRID)
+    return av, aa
+
+
+def _take_legs(device_id: str) -> tuple[bool, bool] | None:
+    """The legs this device was started with in the active take (STOP targets these, not current arm state)."""
+    entry = take_entry(device_id)
+    if entry is not None:
+        return bool(entry.armed_video), bool(entry.armed_audio)
+    return None
+
+
 def _armed_snapshot() -> list[tuple[DeviceConfig, bool, bool, CaptureMode, float]]:
     """The armed set, frozen at REC start. Arm/mode changes during a take apply to the next take."""
     armed = []
     for cfg in device_configs:
-        state = device_states[cfg.id]
         if not cfg.enabled:
             continue
-        av = state.armed_video and cfg.role in (DeviceRole.VIDEO, DeviceRole.HYBRID)
-        aa = state.armed_audio and cfg.role in (DeviceRole.AUDIO, DeviceRole.HYBRID)
+        av, aa = _armed_legs(cfg)
         if av or aa:
+            state = device_states[cfg.id]
             armed.append((cfg, av, aa, state.capture_mode, state.mode_param))
     return armed
 
@@ -494,8 +511,28 @@ def _finalize_rolling_manifest() -> None:
         entry.metadata["rolling"] = {"kept_frames": len(mtimes), "video_span_s": round(span, 3)}
 
 
+def _maybe_finalize_take() -> None:
+    """Finalize the active take once its last device has stopped (per-device or master path)."""
+    global active_take_manifest
+    m = active_take_manifest
+    if m is None or m.status != "recording":
+        return
+    if any(device_states[e.device_id].desired_recording for e in m.devices):
+        return
+    m.status = "stopped"
+    m.stopped_at = utc_now()
+    _finalize_rolling_manifest()
+    rolling_take_meta.clear()
+    update_master_ui()
+    update_manifest_ui()
+    persist_runtime_state()
+
+
 async def start_all() -> None:
     global active_take_manifest
+    if active_take_manifest is not None and active_take_manifest.status == "recording":
+        ui.notify("a take is already recording — stop it first", type="warning")
+        return
     armed = _armed_snapshot()
     if not armed:
         ui.notify("no armed devices — arm A/V on a device card first", type="warning")
@@ -515,15 +552,42 @@ async def stop_all() -> None:
     global active_take_manifest
     for cfg in device_configs:
         if cfg.enabled:
-            await stop_device(cfg.id)
+            legs = _take_legs(cfg.id) or _armed_legs(cfg)
+            await stop_device(cfg.id, want_video=legs[0], want_audio=legs[1])
     await asyncio.sleep(0.5)
-    if active_take_manifest is not None:
-        active_take_manifest.status = "stopped"
-        active_take_manifest.stopped_at = utc_now()
-        _finalize_rolling_manifest()
-    rolling_take_meta.clear()
+    _maybe_finalize_take()
+
+
+async def device_rec(device_id: str) -> None:
+    """Per-device REC = a single-device take, honoring the device's arm toggles and mode."""
+    global active_take_manifest
+    cfg = device_configs_by_id[device_id]
+    if active_take_manifest is not None and active_take_manifest.status == "recording":
+        if take_entry(device_id) is not None:
+            ui.notify(f"{cfg.name} is already recording in the active take", type="warning")
+        else:
+            ui.notify("a take is already recording — stop it first", type="warning")
+        return
+    av, aa = _armed_legs(cfg)
+    if not av and not aa:
+        ui.notify(f"{cfg.name}: nothing armed — flip ARM V/ARM A first", type="warning")
+        return
+    state = device_states[device_id]
+    active_take_manifest = TakeManifest.new_armed(None, [(cfg, av, aa, state.capture_mode, state.mode_param)])
+    active_take_manifest.status = "recording"
+    active_take_manifest.started_at = utc_now()
+    state.current_take_id = active_take_manifest.take_id
     update_manifest_ui()
     persist_runtime_state()
+    await start_device(device_id, want_video=av, want_audio=aa)
+
+
+async def device_stop(device_id: str) -> None:
+    cfg = device_configs_by_id[device_id]
+    legs = _take_legs(device_id) or _armed_legs(cfg)
+    await stop_device(device_id, want_video=legs[0], want_audio=legs[1])
+    await asyncio.sleep(0.5)
+    _maybe_finalize_take()
 
 
 def poll_status() -> None:
@@ -600,8 +664,8 @@ def build_device_card(cfg: DeviceConfig) -> None:
         with ui.row().classes("w-full gap-2"):
             rec_label = "CAM REC" if cfg.type is DeviceType.CINEPI else "ZYN REC"
             stop_label = "CAM STOP" if cfg.type is DeviceType.CINEPI else "ZYN STOP"
-            button_refs[cfg.id] = ui.button(rec_label, on_click=lambda did=cfg.id: start_device(did)).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
-            ui.button(stop_label, on_click=lambda did=cfg.id: stop_device(did)).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
+            button_refs[cfg.id] = ui.button(rec_label, on_click=lambda did=cfg.id: device_rec(did)).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
+            ui.button(stop_label, on_click=lambda did=cfg.id: device_stop(did)).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
 
 
 @ui.page("/")
