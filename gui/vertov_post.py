@@ -168,6 +168,9 @@ def render_proxy(take_dir: Path) -> Path:
         "-preset", "ultrafast",
         "-crf", "18",
         "-pix_fmt", "yuv420p",
+        "-color_primaries", "bt709",
+        "-color_trc", "bt709",
+        "-colorspace", "bt709",
         str(proxy),
     ])
     return proxy
@@ -189,6 +192,9 @@ def render_lossless(take_dir: Path) -> Path:
         "-preset", "ultrafast",
         "-qp", "0",
         "-pix_fmt", "yuv420p",
+        "-color_primaries", "bt709",
+        "-color_trc", "bt709",
+        "-colorspace", "bt709",
         str(lossless),
     ])
     return lossless
