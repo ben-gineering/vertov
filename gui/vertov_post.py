@@ -130,6 +130,7 @@ def inspect_take(take_dir: Path) -> dict[str, Any]:
     return {
         "take_id": manifest["take_id"],
         "take_dir": str(take_dir),
+        "notes": manifest.get("notes"),
         "cinepi_dir": str(cinepi_dir) if cinepi_dir else None,
         "audio_file": str(audio_file) if audio_file else None,
         "capture_mode": mode,

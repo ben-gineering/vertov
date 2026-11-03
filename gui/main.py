@@ -625,6 +625,16 @@ def poll_status() -> None:
     persist_runtime_state()
 
 
+def set_take_note(value: str) -> None:
+    if active_take_manifest is None:
+        ui.notify("no active take — start a recording first", type="warning")
+        return
+    active_take_manifest.notes = value.strip() or None
+    persist_runtime_state()
+    update_manifest_ui()
+    ui.notify("note saved to take manifest", type="positive")
+
+
 def build_device_card(cfg: DeviceConfig) -> None:
     state = device_states[cfg.id]
     with ui.card().classes("w-80"):
@@ -700,6 +710,11 @@ def main_page() -> None:
             with ui.row().classes("w-full gap-2"):
                 master_start_btn = ui.button("START REC", on_click=start_all).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
                 master_stop_btn = ui.button("STOP REC", on_click=stop_all).props("unelevated").classes("w-full").style(IDLE_BUTTON_STYLE)
+            note_input = ui.input("take note",
+                                  value=(active_take_manifest.notes or "") if active_take_manifest else "")
+            note_input.props("dense").classes("w-full")
+            note_input.on("keydown.enter", lambda e: set_take_note(e.sender.value))
+            ui.label("Enter saves the note into the take manifest").classes("text-caption text-grey-5")
 
     with ui.row().classes("w-full items-start gap-4 q-mt-md"):
         with ui.card().classes("w-full"):
