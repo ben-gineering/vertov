@@ -3,9 +3,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+
+BT709_BSF = "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1"
 
 
 def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -169,7 +175,7 @@ def render_proxy(take_dir: Path) -> Path:
         "-crf", "18",
         "-pix_fmt", "yuv420p",
         # BT.709 VUI: output flags don't survive this ffmpeg's mp4/x264 path — bsf is proven
-        "-bsf:v", "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1",
+        "-bsf:v", BT709_BSF,
         str(proxy),
     ])
     return proxy
@@ -191,41 +197,45 @@ def render_lossless(take_dir: Path) -> Path:
         "-preset", "ultrafast",
         "-qp", "0",
         "-pix_fmt", "yuv420p",
-        "-bsf:v", "h264_metadata=colour_primaries=1:transfer_characteristics=1:matrix_coefficients=1",
+        "-bsf:v", BT709_BSF,
         str(lossless),
     ])
     return lossless
 
 
+def _mux_video_audio(info: dict[str, Any], video_file: Path, post_dir: Path, out_name: str, audio_codec: str) -> Path:
+    output = post_dir / out_name
+    cmd = ["ffmpeg", "-y", "-i", str(video_file)]
+    if info["audio_file"]:
+        # rolling/tail sync: trim the audio front so it ends with the kept video tail
+        if info["audio_offset_sec"] > 0.05:
+            cmd += ["-ss", f"{info['audio_offset_sec']:.3f}", "-i", str(info["audio_file"])]
+        else:
+            cmd += ["-i", str(info["audio_file"])]
+        cmd += ["-c:v", "copy", "-c:a", audio_codec, "-shortest"]
+    else:
+        output = post_dir / out_name.replace("_with_audio", "_video_only")
+        cmd += ["-c:v", "copy"]
+    cmd += [str(output)]
+    run(cmd)
+    return output
+
+
 def mux_audio(take_dir: Path) -> Path:
     info = inspect_take(take_dir)
     post_dir = ensure_post_dir(take_dir)
-    audio_file = info["audio_file"]
     if not info["cinepi_dir"]:
         # audio-only take: nothing to mux; carry the wav into post/
         output = post_dir / "audio_only.wav"
-        if audio_file:
-            run(["cp", str(audio_file), str(output)])
-        metadata = info | {"audio_only": str(output) if audio_file else None, "sync_mode": "audio_only"}
+        if info["audio_file"]:
+            run(["cp", str(info["audio_file"]), str(output)])
+        metadata = info | {"audio_only": str(output) if info["audio_file"] else None, "sync_mode": "audio_only"}
         (post_dir / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
         return output
     proxy = post_dir / "proxy.mp4"
     if not proxy.exists():
         render_proxy(take_dir)
-    output = post_dir / "proxy_with_audio.mp4"
-    cmd = ["ffmpeg", "-y", "-i", str(proxy)]
-    if audio_file:
-        # rolling/tail sync: trim the audio front so it ends with the kept video tail
-        if info["audio_offset_sec"] > 0.05:
-            cmd += ["-ss", f"{info['audio_offset_sec']:.3f}", "-i", str(audio_file)]
-        else:
-            cmd += ["-i", str(audio_file)]
-        cmd += ["-c:v", "copy", "-c:a", "aac", "-shortest"]
-    else:
-        output = post_dir / "proxy_video_only.mp4"
-        cmd += ["-c:v", "copy"]
-    cmd += [str(output)]
-    run(cmd)
+    output = _mux_video_audio(info, proxy, post_dir, "proxy_with_audio.mp4", "aac")
     metadata = info | {
         "proxy": str(proxy),
         "proxy_with_audio": str(output),
@@ -243,19 +253,7 @@ def mux_audio_lossless(take_dir: Path) -> Path:
     lossless = post_dir / "lossless.mkv"
     if not lossless.exists():
         render_lossless(take_dir)
-    output = post_dir / "lossless_with_audio.mkv"
-    cmd = ["ffmpeg", "-y", "-i", str(lossless)]
-    if info["audio_file"]:
-        if info["audio_offset_sec"] > 0.05:
-            cmd += ["-ss", f"{info['audio_offset_sec']:.3f}", "-i", str(info["audio_file"])]
-        else:
-            cmd += ["-i", str(info["audio_file"])]
-        cmd += ["-c:v", "copy", "-c:a", "flac", "-shortest"]
-    else:
-        output = post_dir / "lossless_video_only.mkv"
-        cmd += ["-c:v", "copy"]
-    cmd += [str(output)]
-    run(cmd)
+    output = _mux_video_audio(info, lossless, post_dir, "lossless_with_audio.mkv", "flac")
     metadata_path = post_dir / "metadata.json"
     metadata = load_json(metadata_path) if metadata_path.exists() else info
     metadata.update({
@@ -265,6 +263,76 @@ def mux_audio_lossless(take_dir: Path) -> Path:
     })
     metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
     return output
+
+
+def develop_frames(dng_files: list[Path], develop_dir: Path, jobs: int, im_bin: str) -> list[Path]:
+    """Develop DNGs to 16-bit PNGs in parallel (magick/convert via libraw: demosaic + AsShotNeutral WB)."""
+    develop_dir.mkdir(parents=True, exist_ok=True)
+
+    def one(item: tuple[int, Path]) -> Path:
+        i, src = item
+        out = develop_dir / f"{i:09d}.png"
+        if not out.exists():
+            run([im_bin, str(src), "-depth", "16", str(out)])
+        return out
+
+    with ThreadPoolExecutor(max_workers=jobs) as ex:
+        return list(ex.map(one, enumerate(dng_files)))
+
+
+def render_quality(take_dir: Path, *, jobs: int = 0, develop_dir: Path | None = None,
+                   keep_developed: bool = False, vf: str | None = None) -> Path:
+    """Full-quality render: ImageMagick/libraw develop -> 16-bit encode -> BT.709."""
+    info = inspect_take(take_dir)
+    if not info["cinepi_dir"]:
+        raise RuntimeError("no video leg in this take (audio-only)")
+    im_bin = shutil.which("magick") or shutil.which("convert")
+    if im_bin is None:
+        raise RuntimeError("quality render needs ImageMagick (magick/convert with DNG support) — install it or use the fast preview")
+    dng_files = sorted(Path(info["cinepi_dir"]).glob("*.dng"))
+    develop_dir = develop_dir or Path(info["take_dir"]) / "developed"
+    print(f"develop: {len(dng_files)} frames -> {develop_dir} (~{len(dng_files) * 14 / 1000:.1f} GB PNGs, {im_bin}, {jobs} jobs)")
+    outs = develop_frames(dng_files, develop_dir, jobs or (os.cpu_count() or 4), im_bin)
+    post_dir = ensure_post_dir(take_dir)
+    quality = post_dir / "quality.mp4"
+    filter_chain = (vf or "scale=1920:-2") + ",format=yuv420p"
+    run([
+        "ffmpeg", "-y",
+        "-framerate", f"{info['effective_fps']:.6f}",
+        "-pattern_type", "glob",
+        "-i", str(develop_dir / "*.png"),
+        "-vf", filter_chain,
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-bsf:v", BT709_BSF,
+        str(quality),
+    ])
+    if not keep_developed:
+        shutil.rmtree(develop_dir, ignore_errors=True)
+    return quality
+
+
+def cmd_quality(args):
+    take_dir = Path(args.take_dir)
+    info = inspect_take(take_dir)
+    quality = render_quality(take_dir, jobs=args.jobs,
+                             develop_dir=Path(args.develop_dir) if args.develop_dir else None,
+                             keep_developed=args.keep_developed, vf=args.vf)
+    post_dir = ensure_post_dir(take_dir)
+    output = _mux_video_audio(info, quality, post_dir, "quality_with_audio.mp4", "aac")
+    metadata_path = post_dir / "metadata.json"
+    metadata = load_json(metadata_path) if metadata_path.exists() else info
+    metadata.update({
+        "quality": str(quality),
+        "quality_with_audio": str(output),
+        "renderer": "imagemagick/libraw develop + x264 medium",
+        "vf": args.vf or "scale=1920:-2",
+        "sync_mode": info["sync_mode"],
+    })
+    metadata_path.write_text(json.dumps(metadata, indent=2) + "\n")
+    print(output)
 
 
 def cmd_inspect(args):
@@ -299,6 +367,14 @@ def build_parser() -> argparse.ArgumentParser:
         sp = sub.add_parser(name)
         sp.add_argument("take_dir")
         sp.set_defaults(func=func)
+
+    quality = sub.add_parser("quality", help="full-quality render: ImageMagick/libraw develop -> 16-bit encode -> BT.709 (desktop only, needs magick)")
+    quality.add_argument("take_dir")
+    quality.add_argument("--jobs", type=int, default=0, help="parallel develop jobs (0 = cpu count)")
+    quality.add_argument("--develop-dir", default=None, help="where to write developed PNGs (default: take_dir/developed)")
+    quality.add_argument("--keep-developed", action="store_true", help="keep the ~14 MB/frame PNGs after encoding")
+    quality.add_argument("--vf", default=None, help="extra video filter chain (runs at 16-bit, before format=yuv420p)")
+    quality.set_defaults(func=cmd_quality)
     return p
 
 
