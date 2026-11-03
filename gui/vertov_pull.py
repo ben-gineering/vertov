@@ -32,30 +32,36 @@ def parse_ts(value: str | None) -> datetime | None:
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def run_stream(cmd: list[str]) -> None:
+    """Like run(), but lets output flow straight to the terminal (rsync --info=progress2)."""
+    subprocess.run(cmd, check=True, text=True)
+
+
 def ssh_target(user: str, host: str) -> str:
     return f"{user}@{host}"
 
 
-def fetch_remote_path(user: str, host: str, remote_path: str, local_path: Path, dry_run: bool) -> None:
+def fetch_remote_path(user: str, host: str, remote_path: str, local_path: Path, dry_run: bool, stream: bool = False) -> None:
     local_path.parent.mkdir(parents=True, exist_ok=True)
     remote_spec = f"{ssh_target(user, host)}:{remote_path}"
-    if remote_path.endswith("/"):
-        cmd = ["rsync", "-av", remote_spec, str(local_path)]
+    if stream:
+        cmd = ["rsync", "-a", "--info=progress2", remote_spec, str(local_path)]
     else:
         cmd = ["rsync", "-av", remote_spec, str(local_path)]
     if dry_run:
         print("DRY RUN:", shlex.join(cmd))
         return
-    run(cmd)
+    if stream:
+        run_stream(cmd)
+    else:
+        run(cmd)
 
 
 def fetch_manifest_latest(cfg: dict[str, Any], dest: Path, dry_run: bool) -> Path:
+    # manifests are tiny read-only metadata — fetched even on --dry-run so the summary works
     vh = cfg["vertov_host"]
     remote = vh["active_manifest"]
     local_path = dest / Path(remote).name
-    if dry_run:
-        print("DRY RUN: fetch manifest", remote)
-        return local_path
     run(["rsync", "-av", f"{ssh_target(vh['ssh_user'], vh['host'])}:{remote}", str(dest)])
     return local_path
 
@@ -64,9 +70,6 @@ def fetch_manifest_take(cfg: dict[str, Any], take_id: str, dest: Path, dry_run: 
     vh = cfg["vertov_host"]
     remote = f"{vh['manifest_dir'].rstrip('/')}/{take_id}.json"
     local_path = dest / f"{take_id}.json"
-    if dry_run:
-        print("DRY RUN: fetch manifest", remote)
-        return local_path
     run(["rsync", "-av", f"{ssh_target(vh['ssh_user'], vh['host'])}:{remote}", str(dest)])
     return local_path
 
@@ -126,6 +129,54 @@ def choose_candidates(manifest: dict[str, Any], device: dict[str, Any], device_c
     return matches[-1:] if matches else []
 
 
+def remote_size(user: str, host: str, remote_path: str) -> int | None:
+    """Byte size of a remote dir/file (du -sb); None if unreachable."""
+    try:
+        cp = run(["ssh", ssh_target(user, host), f"du -sb -- {shlex.quote(remote_path)}"])
+        return int(cp.stdout.split()[0])
+    except (subprocess.CalledProcessError, ValueError, IndexError):
+        return None
+
+
+def human_size(n: int | None) -> str:
+    if n is None:
+        return "n/a"
+    size = float(n)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if size < 1024 or unit == "TB":
+            return f"{n} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return "n/a"
+
+
+def print_take_summary(manifest: dict[str, Any], devices_cfg: dict[str, Any], ingest_cfg: dict[str, Any], dry_run: bool) -> None:
+    print(f"take:     {manifest.get('take_id')}")
+    print(f"status:   {manifest.get('status')}")
+    print(f"notes:    {manifest.get('notes') or '-'}")
+    print(f"window:   {manifest.get('started_at')} -> {manifest.get('stopped_at')}")
+    device_index = {d["id"]: d for d in devices_cfg["devices"]}
+    total = 0
+    for device in manifest.get("devices", []):
+        device_id = device["device_id"]
+        cfg = device_index.get(device_id)
+        if not cfg or not device.get("expected", True):
+            print(f"  - {device_id}: not expected / no config -> skipped")
+            continue
+        mode = device.get("capture_mode", "normal")
+        params = device.get("mode_params") or {}
+        param_str = " ".join(f"{k}={v}" for k, v in params.items())
+        print(f"  - {device_id} [{cfg['type']}] mode={mode} {param_str}")
+        try:
+            for cand in choose_candidates(manifest, device, cfg, ingest_cfg):
+                size = remote_size(cfg["ssh_user"], cfg["host"], cand)
+                if size is not None:
+                    total += size
+                print(f"      {cand}  ({human_size(size)})")
+        except subprocess.CalledProcessError as exc:
+            print(f"      (unreachable: {exc.returncode})")
+    print(f"total:    {human_size(total)}")
+
+
 def ingest_from_manifest(manifest: dict[str, Any], devices_cfg: dict[str, Any], ingest_cfg: dict[str, Any], dry_run: bool) -> dict[str, Any]:
     root_dir = Path(ingest_cfg["local_storage"]["root_dir"]).expanduser()
     take_dir = root_dir / manifest["take_id"]
@@ -163,9 +214,9 @@ def ingest_from_manifest(manifest: dict[str, Any], devices_cfg: dict[str, Any], 
                 local_path = take_dir / local_name
                 if cfg["type"] == "cinepi":
                     local_path.mkdir(parents=True, exist_ok=True) if not dry_run else None
-                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file.rstrip("/") + "/", local_path, dry_run)
+                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file.rstrip("/") + "/", local_path, dry_run, stream=True)
                 else:
-                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run)
+                    fetch_remote_path(cfg["ssh_user"], cfg["host"], remote_file, local_path, dry_run, stream=True)
                 entry["local_files"].append(str(local_path))
             entry["status"] = "copied" if remote_files else "no_matches"
         except Exception as exc:
@@ -195,6 +246,7 @@ def cmd_latest(args):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = fetch_manifest_latest(ingest_cfg, tmp_dir, args.dry_run)
     manifest = load_json(manifest_path) if manifest_path.exists() else {"take_id": "dry_run", "devices": []}
+    print_take_summary(manifest, devices_cfg, ingest_cfg, args.dry_run)
     report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
     print(json.dumps(report, indent=2))
     maybe_run_post(report, args.dry_run)
@@ -207,6 +259,7 @@ def cmd_take(args):
     tmp_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = fetch_manifest_take(ingest_cfg, args.take_id, tmp_dir, args.dry_run)
     manifest = load_json(manifest_path) if manifest_path.exists() else {"take_id": args.take_id, "devices": []}
+    print_take_summary(manifest, devices_cfg, ingest_cfg, args.dry_run)
     report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
     print(json.dumps(report, indent=2))
     maybe_run_post(report, args.dry_run)
@@ -216,6 +269,7 @@ def cmd_manifest(args):
     ingest_cfg = load_json(Path(args.ingest_config))
     devices_cfg = load_json(Path(args.devices_config))
     manifest = load_json(Path(args.manifest_path))
+    print_take_summary(manifest, devices_cfg, ingest_cfg, args.dry_run)
     report = ingest_from_manifest(manifest, devices_cfg, ingest_cfg, args.dry_run)
     print(json.dumps(report, indent=2))
     maybe_run_post(report, args.dry_run)
@@ -226,21 +280,21 @@ def cmd_report(args):
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(description="Pull vertov takes from the Pi and optionally run post.")
     p.add_argument("--devices-config", default=str(DEFAULT_DEVICE_CONFIG))
     p.add_argument("--ingest-config", default=str(DEFAULT_INGEST_CONFIG))
-    sub = p.add_subparsers(dest="command", required=True)
+    sub = p.add_subparsers(dest="command")
 
-    latest = sub.add_parser("latest")
+    latest = sub.add_parser("latest", help="pull the newest take (active manifest)")
     latest.add_argument("--dry-run", action="store_true")
     latest.set_defaults(func=cmd_latest)
 
-    take = sub.add_parser("take")
+    take = sub.add_parser("take", help="pull a take by id (see 'takes')")
     take.add_argument("take_id")
     take.add_argument("--dry-run", action="store_true")
     take.set_defaults(func=cmd_take)
 
-    manifest = sub.add_parser("manifest")
+    manifest = sub.add_parser("manifest", help="pull from a local manifest json")
     manifest.add_argument("manifest_path")
     manifest.add_argument("--dry-run", action="store_true")
     manifest.set_defaults(func=cmd_manifest)
