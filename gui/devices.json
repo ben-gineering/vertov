@@ -12,6 +12,7 @@
       "mjpeg_url": "http://127.0.0.1:8000/stream",
       "ssh_user": "pi",
       "video_dir": "/media/RAW",
+      "ui_url": "5000",
       "tags": [
         "main",
         "camera"

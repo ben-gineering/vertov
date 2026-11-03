@@ -67,6 +67,7 @@ class DeviceConfig:
     ssh_user: str | None = None
     capture_dir: str | None = None
     video_dir: str | None = None
+    ui_url: str | None = None
     notes: str | None = None
 
     @classmethod
@@ -86,6 +87,7 @@ class DeviceConfig:
             ssh_user=data.get("ssh_user"),
             capture_dir=data.get("capture_dir"),
             video_dir=data.get("video_dir"),
+            ui_url=data.get("ui_url"),
             notes=data.get("notes"),
         )
 

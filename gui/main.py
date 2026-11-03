@@ -646,6 +646,17 @@ def build_device_card(cfg: DeviceConfig) -> None:
             ui.space().style("height: 200px")
         status_refs[cfg.id] = ui.label("idle").classes("text-caption text-grey")
         info_refs[cfg.id] = ui.label(f"{cfg.type.value} | {cfg.role.value} | {cfg.host}").classes("text-caption text-grey-6")
+        if cfg.ui_url:
+            link_style = "color:#8ab4f8;font-size:13px;"
+            if str(cfg.ui_url).startswith("http"):
+                ui.html(f'<a href="{cfg.ui_url}" target="_blank" rel="noopener" '
+                        f'style="{link_style}">{cfg.name} UI ↗</a>')
+            else:
+                # bare port: resolve against whatever host serves the GUI (wifi + hotspot mode)
+                ui.html(
+                    f'<a href="#" target="_blank" rel="noopener" style="{link_style}" '
+                    f"onclick=\"this.href='http://'+location.hostname+':{cfg.ui_url}/'\">{cfg.name} UI ↗</a>"
+                )
         with ui.row().classes("w-full items-center gap-2"):
             ui.switch("ARM V", value=state.armed_video,
                       on_change=lambda e, did=cfg.id: set_arm(did, "video", e.value)).props("dense")
