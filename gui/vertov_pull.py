@@ -275,6 +275,28 @@ def cmd_manifest(args):
     maybe_run_post(report, args.dry_run)
 
 
+def cmd_takes(args):
+    """List all manifests from the Pi: id | date | status | duration | devices."""
+    ingest_cfg = load_json(Path(args.ingest_config))
+    vh = ingest_cfg["vertov_host"]
+    dest = Path("/tmp/vertov_pull/manifests")
+    dest.mkdir(parents=True, exist_ok=True)
+    run(["rsync", "-a", f"{ssh_target(vh['ssh_user'], vh['host'])}:{vh['manifest_dir'].rstrip('/')}/*", str(dest)])
+    count = 0
+    for p in sorted(dest.glob("*.json")):
+        try:
+            m = load_json(p)
+        except ValueError:
+            continue
+        count += 1
+        start = parse_ts(m.get("started_at"))
+        stop = parse_ts(m.get("stopped_at"))
+        dur = f"{(stop - start).total_seconds():.0f}s" if start and stop else "-"
+        devices = " ".join(f"{d['device_id']}[{d.get('capture_mode', 'normal')}]" for d in m.get("devices", []))
+        print(f"{m.get('take_id', p.stem):<34} {str(m.get('created_at'))[:10]:<11} {str(m.get('status')):<9} {dur:>8}  {devices}")
+    print(f"{count} takes")
+
+
 def cmd_report(args):
     print(json.dumps(load_json(Path(args.report_path)), indent=2))
 
@@ -299,6 +321,8 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--dry-run", action="store_true")
     manifest.set_defaults(func=cmd_manifest)
 
+    sub.add_parser("takes", help="list all takes/manifests on the Pi").set_defaults(func=cmd_takes)
+
     report = sub.add_parser("report")
     report.add_argument("report_path")
     report.set_defaults(func=cmd_report)
@@ -306,5 +330,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 if __name__ == "__main__":
-    args = build_parser().parse_args()
-    args.func(args)
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.command is None:
+        parser.print_help()
+    else:
+        args.func(args)
